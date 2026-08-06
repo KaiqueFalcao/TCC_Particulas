@@ -34,6 +34,9 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
   Double_t px, py, pz; // ADICIONADO (Faltou pz)
   Double_t energia_part_final;
   Double_t pt, cont_pt = 0, cont_pt2 = 0;
+  Double_t p_modulo, soma_modulo_p_modulo = 0;
+  Double_t rapidez_part_final;
+  
 
   // ADICIONADO: acumuladores dos numeros quanticos que faltavam no original.
   Double_t soma_carga = 0, soma_barionico = 0, soma_leptonico = 0;
@@ -44,8 +47,11 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
   TH1F *hist_px_part_final = new TH1F("hist_px_part_final", "Momentos transversais das particulas finais no eixo X", 100, 1, 1);
   TH1F *hist_py_part_final = new TH1F("hist_py_part_final", "Momentos transversais das particulas finais no eixo Y", 100, 1, 1);
   TH1F *hist_pz_part_final = new TH1F("hist_pz_part_final", "Momentos transversais das particulas finais no eixo Z", 100, 1, 1);
+  TH2F *hist_rapidez_energia = new TH2F("hist_rapidez_energia","Energia vs rapidez;Rapidez y;Energia (GeV)",100, -15, 15, 100, 0, 200);      // eixo y: energia, de 0 a 200
   TH1F *hist_soma_momento = new TH1F("hist_soma_momento", "Soma dos momentos das particulas finais dos eventos", 100, 0, 0.001);
   TH2F *dispersao_momentos = new TH2F("dispersao_momentos", "Dispersao dos momentos de estado central e final", 100, 1, 1, 100, 1, 1);
+  TH1F *hist_p_particula = new TH1F("hist_p_particula", "Modulo do momento por particula", 100, 1, 1);
+  TH1F *hist_soma_modulo_p = new TH1F("hist_soma_modulo_p", "Soma dos modulos por evento", 100, 1, 1);
 
   TPythia8 *pythia8 = new TPythia8();
   pythia8->ReadString("HardQCD:all = on");
@@ -58,6 +64,7 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
 
   for (Int_t iev = 0; iev < nev; iev++)
   {
+    soma_modulo_p_modulo = 0;
     cont_pt = 0;
     cont_pt2 = 0;
     soma_de_energia = 0;                                       // CORRIGIDO (faltava zerar a energia)
@@ -88,6 +95,7 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
         pz = part->Pz();                     // ADICIONADO
 
         energia_part_final = part->Energy();
+        rapidez_part_final = part->Y();
 
         Int_t pdg = part->GetPdgCode();      // ADICIONADO: identidade da particula
 
@@ -95,6 +103,9 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
         soma_px += px;
         soma_py += py;
         soma_pz += pz;
+
+        p_modulo = TMath::Sqrt(px*px + py*py + pz*pz); // ADICIONADO2
+        soma_modulo_p_modulo += p_modulo;             // ADICIONADO2
 
         soma_de_energia += energia_part_final;
 
@@ -110,6 +121,9 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
         hist_px_part_final->Fill(px);
         hist_py_part_final->Fill(py);
         hist_pz_part_final->Fill(pz); // ADICIONADO: histograma de pz
+        hist_p_particula->Fill(p_modulo);
+
+        hist_rapidez_energia->Fill(rapidez_part_final, energia_part_final); // ADICIONADO: histograma de rapidez
 
         if (-0.9 < eta && eta < 0.9)
         {
@@ -117,11 +131,13 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
         }
       }
     }
+    
     dispersao_momentos->Fill(cont_pt, cont_pt2);
 
     Double_t modulo_p_total = TMath::Sqrt(soma_px*soma_px + soma_py*soma_py + soma_pz*soma_pz);
     hist_soma_momento->Fill(modulo_p_total);   // CORRIGIDO
     hist_soma_energia_final->Fill(soma_de_energia); // CORRIGIDO (Posição dentro do loop)
+    hist_soma_modulo_p->Fill(soma_modulo_p_modulo); // ADICIONADO: histograma da soma dos modulos por evento
 
     // ADICIONADO: acumula para a media e imprime os primeiros eventos.
     tot_Q += soma_carga; tot_B += soma_barionico; tot_L += soma_leptonico;
@@ -133,53 +149,78 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
   }
 
 
+ // ===== CANVAS 1: momentos por particula (retratos) =====
+TCanvas *c1 = new TCanvas("c1", "Momentos por particula", 1600, 1000);
+c1->Divide(2, 2);
 
-  TCanvas *c1 = new TCanvas("c1", "Histogramas e distribuicao", 2500, 2500);
-  c1->Divide(2, 4);
+c1->cd(1);
+hist_momentos_particulas_finais->SetTitle("Momento transversal (pT) por particula");
+hist_momentos_particulas_finais->GetXaxis()->SetTitle("pT (GeV)");
+hist_momentos_particulas_finais->GetYaxis()->SetTitle("Frequencia");
+hist_momentos_particulas_finais->Draw();
 
-  c1->cd(1);
-  hist_soma_energia_final->SetTitle("Soma das energias das particulas de estado final do evento");
-  hist_soma_energia_final->GetXaxis()->SetTitle("Soma");
-  hist_soma_energia_final->GetYaxis()->SetTitle("Frequencia");
-  hist_soma_energia_final->Draw();
+c1->cd(2);
+hist_px_part_final->SetTitle("px por particula");
+hist_px_part_final->GetXaxis()->SetTitle("px (GeV)");
+hist_px_part_final->GetYaxis()->SetTitle("Frequencia");
+hist_px_part_final->Draw();
 
-  c1->cd(2);
-  hist_momentos_particulas_finais->SetTitle("Distribuicao de momento transversal das particulas de estado final do evento");
-  hist_momentos_particulas_finais->GetXaxis()->SetTitle("Momento");
-  hist_momentos_particulas_finais->GetYaxis()->SetTitle("Frequencia");
-  hist_momentos_particulas_finais->Draw();
+c1->cd(3);
+hist_py_part_final->SetTitle("py por particula");
+hist_py_part_final->GetXaxis()->SetTitle("py (GeV)");
+hist_py_part_final->GetYaxis()->SetTitle("Frequencia");
+hist_py_part_final->Draw();
 
-  c1->cd(3);
-  hist_px_part_final->SetTitle("Distribuicao dos momentos em X das particulas finais");
-  hist_px_part_final->GetXaxis()->SetTitle("Px");
-  hist_px_part_final->GetYaxis()->SetTitle("Frequencia");
-  hist_px_part_final->Draw();
+c1->cd(4);
+hist_pz_part_final->SetTitle("pz por particula");
+hist_pz_part_final->GetXaxis()->SetTitle("pz (GeV)");
+hist_pz_part_final->GetYaxis()->SetTitle("Frequencia");
+hist_pz_part_final->Draw();
 
-  c1->cd(4);
-  hist_py_part_final->SetTitle("Distribuicao dos momentos em Y das particulas finais");
-  hist_py_part_final->GetXaxis()->SetTitle("Py");
-  hist_py_part_final->GetYaxis()->SetTitle("Frequencia");
-  hist_py_part_final->Draw();
+c1->SaveAs("momentos_por_particula.png");
 
-  c1->cd(5);
-  hist_pz_part_final->SetTitle("Distribuicao dos momentos em Z das particulas finais");
-  hist_pz_part_final->GetXaxis()->SetTitle("Pz");
-  hist_pz_part_final->GetYaxis()->SetTitle("Frequencia");
-  hist_pz_part_final->Draw();
 
-  c1->cd(6);
-  hist_soma_momento->SetTitle("Modulo dos momentos das particulas finais");
-  hist_soma_momento->GetXaxis()->SetTitle("Soma");
-  hist_soma_momento->GetYaxis()->SetTitle("Frequencia");
-  hist_soma_momento->Draw();
+// ===== CANVAS 2: conservacao e somas por evento =====
+TCanvas *c2 = new TCanvas("c2", "Conservacao por evento", 1600, 1000);
+c2->Divide(2, 3);
 
-  c1->cd(7);
-  dispersao_momentos->SetTitle("Dispersao dos momentos de estado central e final");
-  dispersao_momentos->GetXaxis()->SetTitle("Momento 1");
-  dispersao_momentos->GetYaxis()->SetTitle("Momento 2");
-  dispersao_momentos->Draw();
+c2->cd(1);
+hist_soma_energia_final->SetTitle("Soma da energia por evento");
+hist_soma_energia_final->GetXaxis()->SetTitle("Energia total (GeV)");
+hist_soma_energia_final->GetYaxis()->SetTitle("Frequencia");
+hist_soma_energia_final->Draw();
 
-  c1 ->SaveAs("distribuicoes_de_energia_e_momento.png");
+c2->cd(2);
+hist_soma_momento->SetTitle("Modulo do momento total por evento");
+hist_soma_momento->GetXaxis()->SetTitle("|soma vetorial de p| (GeV)");
+hist_soma_momento->GetYaxis()->SetTitle("Frequencia");
+hist_soma_momento->Draw();
+
+c2->cd(3);
+hist_soma_modulo_p->SetTitle("Soma dos modulos dos momentos por evento");
+hist_soma_modulo_p->GetXaxis()->SetTitle("Soma de |p| (GeV)");
+hist_soma_modulo_p->GetYaxis()->SetTitle("Frequencia");
+hist_soma_modulo_p->Draw();
+
+c2->cd(4);
+dispersao_momentos->SetTitle("Multiplicidade: total x central (|eta|<0.9)");
+dispersao_momentos->GetXaxis()->SetTitle("N particulas (total)");
+dispersao_momentos->GetYaxis()->SetTitle("N particulas (central)");
+dispersao_momentos->Draw("COLZ");
+
+c2->cd(5);
+hist_p_particula->SetTitle("Modulo do momento por particula");
+hist_p_particula->GetXaxis()->SetTitle("|p| (GeV)");
+hist_p_particula->GetYaxis()->SetTitle("Frequencia");
+hist_p_particula->Draw();
+
+c2->cd(6);
+hist_rapidez_energia->SetTitle("Energia vs Rapidez");
+hist_rapidez_energia->GetXaxis()->SetTitle("Rapidez y");
+hist_rapidez_energia->GetYaxis()->SetTitle("Energia (GeV)");
+hist_rapidez_energia->Draw("COLZ");
+
+c2->SaveAs("conservacao_por_evento.png");
 
   // ADICIONADO
   printf("Medias sobre %d eventos:\n", nev);
@@ -188,8 +229,6 @@ void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Lis
          hist_px_part_final->GetMean(), hist_py_part_final->GetMean(), hist_pz_part_final->GetMean());
   printf("  Q  = %+.3f   B  = %+.3f   L  = %+.3f\n",
          tot_Q / nev, tot_B / nev, tot_L / nev);
-
-
 
 
 }

@@ -1,0 +1,3 @@
+Processing teste_Ajustado.cpp...
+warning: Failed to call `teste_Ajustado()` to execute the macro.
+Add this function or rename the macro. Falling back to `.L`.
