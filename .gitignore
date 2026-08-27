@@ -1,0 +1,4 @@
+# binarios compilados
+teste_nativo
+*.o
+*.exe
