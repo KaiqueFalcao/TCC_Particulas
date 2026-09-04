@@ -41,6 +41,10 @@ void investiga_protons(Int_t nev = 10000)
     for (Int_t ip = 0; ip < np; ip++)
     {
       TParticle *part = (TParticle *)particles->At(ip);
+      Int_t st = part->GetStatusCode();
+      
+      if (iev == 0 && ip < 20) printf("ip=%d  st=%d\n", ip, st);
+
       if (part->GetStatusCode() <= 0) continue;
 
       Double_t E   = part->Energy();
