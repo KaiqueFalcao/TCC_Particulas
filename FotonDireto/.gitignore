@@ -21,3 +21,6 @@ jatos_pi0
 # Editor
 *.swp
 *~
+
+# Versao simplificada antiga, mantida so localmente
+jatos_pi0_root.C
