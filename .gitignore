@@ -1,0 +1,28 @@
+# Binarios compilados
+exemplo_fastjet
+jatos_pi0
+teste_status
+*.o
+*.so
+*.d
+*.pcm
+*.exe
+
+# Artefatos do ACLiC (root -l 'arquivo.cc+')
+*_cc.so
+*_cc.d
+*_C.so
+*_C.d
+*_cpp.so
+*_cpp.d
+*_ACLiC_dict_rdict.pcm
+
+# Saidas de dados (grandes, regeneraveis)
+*.root
+saida.txt
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
