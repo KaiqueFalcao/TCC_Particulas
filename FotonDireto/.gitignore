@@ -1,0 +1,23 @@
+# Binarios compilados
+jatos_pi0
+*.o
+*.so
+*.d
+*.pcm
+
+# Artefatos do ACLiC (root -l 'arquivo.cc+')
+*_cc.so
+*_cc.d
+*_C.so
+*_C.d
+*_ACLiC_dict_rdict.pcm
+
+# Saidas de dados (grandes, regeneraveis)
+*.root
+
+# Figuras geradas ao rodar; as versoes boas ficam em figuras/
+/*.png
+
+# Editor
+*.swp
+*~
