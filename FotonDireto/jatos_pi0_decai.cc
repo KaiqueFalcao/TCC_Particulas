@@ -55,10 +55,10 @@ Int_t mae_pi0(TClonesArray *lista, Int_t i)
 
     TParticle *p = (TParticle*) lista->At(idx);
     Int_t m1 = p->GetFirstMother();
-    Int_t m2 = p->GetSecondMother();
+    // Int_t m2 = p->GetSecondMother();
 
     if (m1 < 0 || m1 >= n) return -1;   // topo do registro
-    if (m2 > m1)           return -1;   // faixa de maes -> string de cor
+    // if (m2 > m1)           return -1;   // faixa de maes -> string de cor
 
     if (((TParticle*) lista->At(m1))->GetPdgCode() == 111) return m1;  // achou
 
@@ -83,7 +83,7 @@ void jatos_pi0_decai()
   pythia8->ReadString("HardQCD:all = on");
   pythia8->ReadString("Random:setSeed = on");
 
-  pythia8->ReadString("PhaseSpace:pTHatMin = 20."); // sem isso quase nao sai jato acima de 20 GeV
+  pythia8->ReadString("PhaseSpace:pTHatMin = 10."); // sem isso quase nao sai jato acima de 20 GeV
   pythia8->ReadString("Random:seed = 43");
 
   pythia8->Initialize(2212, 2212, energia);
