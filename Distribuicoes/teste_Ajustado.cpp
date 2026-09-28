@@ -8,6 +8,7 @@
 #include "TCanvas.h"
 #include "TMath.h"
 #include "TH1F.h"
+#include "TH2F.h"
 
 // ADICIONADO
 Double_t numeroBarionico(Int_t pdg) {
@@ -26,7 +27,7 @@ Double_t numeroLeptonico(Int_t pdg) {
 void distribuicoes_de_energia_e_momento(Int_t nev = 10000, Int_t ndeb = 1 /* Listagem */)
 {
   gSystem->Load("libEG");
-  gSystem->Load("libEgPythia8");
+  gSystem->Load("libEGPythia8");
 
 
   Double_t soma_de_energia=0; // CORRIGIDO
