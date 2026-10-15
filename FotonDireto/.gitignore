@@ -24,3 +24,7 @@ jatos_pi0
 
 # Versao simplificada antiga, mantida so localmente
 jatos_pi0_root.C
+
+# Logs de terminal
+resumo.txt
+saida*.txt
