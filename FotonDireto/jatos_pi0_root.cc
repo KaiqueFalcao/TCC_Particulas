@@ -37,7 +37,7 @@ void jatos_pi0_root()
   // ---- parametros 
   Int_t    nev          = 5000;
   Double_t R            = 0.4;
-  Double_t pt_jato_min  = 20.;
+  Double_t pt_jato_min  = 5.;
   Double_t eta_part_max = 0.9;
   Double_t y_jato_max   = 0.9 - R;
   Double_t energia      = 14000.;
