@@ -1,0 +1,10 @@
+# Saidas de dados (grandes, regeneraveis)
+*.root
+
+# Figuras geradas ao rodar; as versoes boas ficam em figuras/
+/*.png
+
+# Artefatos do ACLiC
+*_cc.so
+*_cc.d
+*_ACLiC_dict_rdict.pcm
