@@ -468,6 +468,5 @@ void jatos_pi0_decai()
 
   // ---- salva tudo no .root (POR ULTIMO, depois de ler os histogramas)
   arquivo->Write();
-  arquivo->Close();
   printf("  Arquivo salvo: jatos_pi0_decai.root\n");
 }

@@ -135,7 +135,7 @@ Int_t acha_faixa(Double_t pt, Double_t *lo, Double_t *hi)
 void jatos_foton()
 {
   // ---- parametros
-  Int_t    nev          = 10000;   // teste
+  Int_t    nev          = 1000000;   // teste
   Double_t R            = 0.4;
   Double_t pt_jato_min  = 5.;      // casa com a primeira faixa
   Double_t eta_part_max = 0.9;
@@ -637,6 +637,5 @@ void jatos_foton()
 
   // ---- salva tudo no .root (POR ULTIMO, depois de ler os histogramas)
   arquivo->Write();
-  arquivo->Close();
   printf("  Arquivo salvo: jatos_foton.root\n");
 }
