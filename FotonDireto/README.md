@@ -9,6 +9,23 @@ repositório constrói as ferramentas para quantificar esse fundo.
 
 ---
 
+## Etapa atual: [`jatos_foton/`](jatos_foton/)
+
+A análise mais recente mudou o ponto de vista — parte do **fóton**, não do
+jato — e mede quanto a técnica de isolamento limpa a amostra.
+
+**Resultado:** o isolamento guarda **71,6 %** dos fótons de fragmentação contra
+apenas **8,5 %** dos de decaimento. A pureza do sinal sobe de 2,44 % para
+17,41 %, um ganho de **7,1×**.
+
+A produção é fatiada em faixas de pThat e somada com peso σ/N, o que mede a
+mesma física com 30× mais precisão pelo mesmo custo de CPU. Todos os `.root`
+estão versionados: dá para abrir os resultados sem rodar nada.
+
+Documentação completa em [`jatos_foton/README.md`](jatos_foton/README.md).
+
+---
+
 ## Contexto físico
 
 A função de fragmentação mede a fração do momento do jato carregada por um

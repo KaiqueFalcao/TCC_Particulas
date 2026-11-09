@@ -18,6 +18,12 @@ análise.
 
 Documentação detalhada em [`FotonDireto/README.md`](FotonDireto/README.md).
 
+A etapa mais recente está em
+[`FotonDireto/jatos_foton/`](FotonDireto/jatos_foton/): análise centrada no
+**fóton**, com classificação de origem, corte de isolamento e produção fatiada
+em faixas de pThat somadas por seção de choque. Os `.root` da produção estão
+versionados, então os resultados abrem sem precisar simular de novo.
+
 | Arquivo | O que faz |
 |---|---|
 | `jatos_pi0.cc` | Pythia nativo, compilado com `g++`, salva `TTree` |

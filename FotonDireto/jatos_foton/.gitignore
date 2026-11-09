@@ -6,11 +6,23 @@
 # Logs de terminal
 *.log
 
-# Figuras geradas ao rodar; as versoes boas ficam em figuras/
+# Figuras geradas ao rodar ficam soltas na pasta e sao ignoradas.
+# As versoes boas sao copiadas para figuras/ e versionadas de la'.
 /*.png
 
-# Os .root sao ignorados por padrao, MENOS o resultado da producao:
-# ele e' versionado de proposito para abrir em outra maquina com o
-# abre_jatos_foton.cc, sem precisar repetir a rodada de 1 hora.
+# Os .root sao ignorados por padrao, MENOS os resultados de producao:
+# eles sao versionados de proposito para abrir em outra maquina sem
+# precisar repetir as rodadas, que levam de 10 minutos a 1 hora cada.
+#
+# ATENCAO: o git nao aceita comentario no fim de uma linha de padrao.
+# O "#" so' vale no inicio da linha. Por isso os nomes vem sozinhos.
+#
+#   jatos_foton.root          1 milhao, codigo v1
+#   jatos_foton_isolado.root  1 milhao, v2 com a classificacao corrigida
+#   jatos_foton_pthat*.root   as 8 faixas de pThat, 100 mil eventos cada
+#   soma_pthat.root           a soma ponderada das 4 faixas com teto
 *.root
 !jatos_foton.root
+!jatos_foton_isolado.root
+!jatos_foton_pthat*.root
+!soma_pthat.root
