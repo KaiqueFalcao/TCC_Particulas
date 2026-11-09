@@ -15,7 +15,11 @@
 // Cada painel de v3 a v8 e' uma faixa de pT do foton (6 por canvas).
 //
 // Todas as faixas ja' vem multiplicadas pelo seu peso sigma/N, lido do bin 5
-// do hist_sigma. O eixo vertical e' mb, nao contagem.
+// do hist_sigma, entao o eixo vertical e' SECAO DE CHOQUE em mb por bin --
+// nao contagem. Esse e' o padrao. Para ver o eixo em numero de ocorrencias,
+// passe o numero de eventos equivalente no segundo argumento:
+//   root -l ve_faixas.cc              // mb  (padrao)
+//   root -l 've_faixas.cc(0, 100000)' // ocorrencias em 100 mil eventos
 //
 // PARA OS DEMAIS GRAFICOS:
 //   so' a soma, nos 12 canvases originais    root -l soma_pthat.cc
@@ -50,7 +54,7 @@ Bool_t    vf_com_soma = kTRUE;
 // Fator final e rotulo do eixo vertical. Em "ocorrencias" o fator converte
 // mb de volta para contagem; em "mb" vale 1 e nada muda.
 Double_t    vf_fator = 1.;
-const char *vf_eixo  = "ocorrencias";
+const char *vf_eixo  = "#sigma [mb] por bin";
 
 TCanvas *v1 = 0, *v2 = 0, *v3 = 0, *v4 = 0;
 TCanvas *v5 = 0, *v6 = 0, *v7 = 0, *v8 = 0;
@@ -163,10 +167,11 @@ void vf_desenha(TH1F **h, Int_t logy)
 }
 
 // sem_soma      : 1 esconde a curva da soma, deixando so' as 4 faixas
-// eventos_equiv : > 0 poe o eixo em NUMERO DE OCORRENCIAS, equivalente a
-//                 uma rodada inclusiva de pThat > 4 com esse tanto de
-//                 eventos. 0 deixa o eixo em mb (secao de choque).
-void ve_faixas(Int_t sem_soma = 0, Double_t eventos_equiv = 100000.)
+// eventos_equiv : 0 (PADRAO) deixa o eixo em SECAO DE CHOQUE, mb por bin.
+//                 Um valor > 0 poe o eixo em NUMERO DE OCORRENCIAS,
+//                 equivalente a uma rodada inclusiva de pThat > 4 com esse
+//                 tanto de eventos.
+void ve_faixas(Int_t sem_soma = 0, Double_t eventos_equiv = 0.)
 {
   const char *curto[NORIGENS]  = {"pi0", "outro", "frag"};
   const char *bonito[NORIGENS] = {"#pi^{0}", "outro hadron", "fragmentacao"};
@@ -214,7 +219,7 @@ void ve_faixas(Int_t sem_soma = 0, Double_t eventos_equiv = 100000.)
   else
   {
     vf_fator = 1.;
-    vf_eixo  = "mb por bin";
+    vf_eixo  = "#sigma [mb] por bin";
     printf("  EIXO EM mb (milibarn), ou seja, secao de choque.\n");
   }
 

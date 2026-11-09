@@ -20,6 +20,13 @@
 //
 // Os histogramas da jatos_foton_v2.cc tem Sumw2 ligado, entao o Scale e o Add
 // propagam as incertezas corretamente.
+//
+// UNIDADE DO EIXO VERTICAL: o padrao e' SECAO DE CHOQUE, em mb por bin. E' o
+// que a soma pesada produz naturalmente, e e' a unidade em que o resultado se
+// compara com dado experimental e com a foton_direto.cc. Quem quiser o eixo em
+// numero de ocorrencias passa o numero de eventos equivalente:
+//   root -l -b -q soma_pthat.cc                 // mb  (padrao)
+//   root -l -b -q 'soma_pthat.cc(100000)'       // ocorrencias em 100 mil ev
 
 #include "TFile.h"
 #include "TCanvas.h"
@@ -44,7 +51,7 @@ Double_t  sp_peso   [NRODADAS];
 // Em modo "ocorrencias" o fator converte mb de volta para contagem; em
 // modo "mb" ele vale 1 e nada muda.
 Double_t    sp_fator = 1.;
-const char *sp_eixo  = "mb por bin";
+const char *sp_eixo  = "#sigma [mb] por bin";
 
 // ---- histogramas SOMADOS. Mesmos nomes da jatos_foton_v2.cc, para a
 // ---- correspondencia ficar obvia. Em escopo de arquivo, entao continuam
@@ -56,6 +63,12 @@ TH2F *hist_eta_phi    = 0;
 TH1F *hist_assimetria = 0;
 TH1F *hist_z_gama     = 0;
 TH1F *hist_soma_cone  = 0;
+
+// Espectro de pT dos fotons ISOLADOS, um por origem (35 bins de 5 a 40
+// GeV/c). Mesmo binning do hist_pt_direto_iso da foton_direto.cc.
+TH1F *hist_pt_iso_pi0   = 0;
+TH1F *hist_pt_iso_frag  = 0;
+TH1F *hist_pt_iso_outro = 0;
 
 TH2F *hist_td[NFAIXAS] = {0, 0, 0, 0, 0, 0};
 TH2F *hist_Z [NFAIXAS] = {0, 0, 0, 0, 0, 0};
@@ -76,6 +89,7 @@ TCanvas *c9  = 0;
 TCanvas *c10 = 0;
 TCanvas *c11 = 0;
 TCanvas *c12 = 0;
+TCanvas *c13 = 0;   // espectro de pT dos isolados, por origem
 
 // Soma um histograma de UMA dimensao das 4 rodadas, cada uma multiplicada
 // pelo peso da sua faixa. Devolve 0 se o histograma nao existir em algum
@@ -160,12 +174,12 @@ TH2F *soma_2d(const char *nome_hist)
   return total;
 }
 
+// eventos_equiv = 0  : eixo em SECAO DE CHOQUE, mb por bin. E' o PADRAO.
 // eventos_equiv > 0  : eixo em NUMERO DE OCORRENCIAS -- quantas haveria numa
 //                      rodada inclusiva de pThat > 4 com esse tanto de
-//                      eventos. E' o default, 100 mil, igual ao que cada
+//                      eventos. Passe 100000 para o equivalente ao que cada
 //                      faixa gerou.
-// eventos_equiv = 0  : eixo em mb (secao de choque).
-void soma_pthat(Double_t eventos_equiv = 100000.)
+void soma_pthat(Double_t eventos_equiv = 0.)
 {
   const char *curto_origem[NORIGENS] = {"pi0", "outro", "frag"};
 
@@ -233,7 +247,7 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
   else
   {
     sp_fator = 1.;
-    sp_eixo  = "mb por bin";
+    sp_eixo  = "#sigma [mb] por bin";
     printf("  EIXO EM mb (milibarn), ou seja, secao de choque.\n");
   }
 
@@ -248,6 +262,11 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
   hist_assimetria = soma_1d("hist_assimetria");
   hist_z_gama     = soma_1d("hist_z_gama");
   hist_soma_cone  = soma_1d("hist_soma_cone");
+
+  // espectro de pT dos isolados, por origem
+  hist_pt_iso_pi0   = soma_1d("hist_pt_iso_pi0");
+  hist_pt_iso_frag  = soma_1d("hist_pt_iso_frag");
+  hist_pt_iso_outro = soma_1d("hist_pt_iso_outro");
 
   hist_eta_phi    = soma_2d("hist_eta_phi");
 
@@ -274,6 +293,15 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
     return;
   }
 
+  // Os tres espectros por origem sao novos: se faltarem, o .root foi gerado
+  // por uma versao da jatos_foton_v2.cc anterior a eles.
+  if (!hist_pt_iso_pi0 || !hist_pt_iso_frag || !hist_pt_iso_outro)
+  {
+    printf("  Faltam os hist_pt_iso_*. Rode a producao de novo:\n");
+    printf("    ./producao.sh 100000 teto\n");
+    return;
+  }
+
   // ================================================================
   //  3) FECHA OS ARQUIVOS DE ENTRADA
   //  Pode fechar: todos os somados levaram SetDirectory(0) e estao
@@ -281,7 +309,7 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
   // ================================================================
   for (Int_t i = 0; i < NRODADAS; i++) sp_arquivo[i]->Close();
 
-  printf("  4 arquivos lidos e fechados. 61 histogramas somados.\n");
+  printf("  4 arquivos lidos e fechados. 64 histogramas somados.\n");
 
   // ================================================================
   //  4) ARQUIVO DE SAIDA
@@ -296,6 +324,9 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
   hist_assimetria->SetDirectory(arquivo);
   hist_z_gama    ->SetDirectory(arquivo);
   hist_soma_cone ->SetDirectory(arquivo);
+  hist_pt_iso_pi0  ->SetDirectory(arquivo);
+  hist_pt_iso_frag ->SetDirectory(arquivo);
+  hist_pt_iso_outro->SetDirectory(arquivo);
   hist_eta_phi   ->SetDirectory(arquivo);
 
   for (Int_t f = 0; f < NFAIXAS; f++)
@@ -408,16 +439,61 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
   }
   c10 = canvas_nao[0];  c11 = canvas_nao[1];  c12 = canvas_nao[2];
 
+  // ---- c13: espectro de pT dos fotons ISOLADOS, um painel por origem.
+  // Este e' o RUIDO separado por origem, no mesmo binning do sinal da
+  // foton_direto.cc -- da' para por os quatro no mesmo grafico depois.
+  TH1F *espectro[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_frag,
+                              hist_pt_iso_outro};
+  const char *tit_esp[NORIGENS] = {"#gamma isolado de #pi^{0}",
+                                   "#gamma isolado de fragmentacao",
+                                   "#gamma isolado de outro hadron"};
+  Int_t cor_esp[NORIGENS] = {kBlue, kRed, kGreen + 2};
+
+  c13 = new TCanvas("c13", "SOMA -- pT dos isolados por origem", 1500, 500);
+  c13->Divide(3, 1);
+
+  for (Int_t o = 0; o < NORIGENS; o++)
+  {
+    c13->cd(o + 1);
+    gPad->SetLogy();
+    gPad->SetLeftMargin(0.16);        // senao os expoentes saem cortados
+
+    espectro[o]->SetTitle(tit_esp[o]);
+    espectro[o]->SetXTitle("p_{T}^{#gamma} [GeV/c]");
+    espectro[o]->SetYTitle(sp_eixo);
+    espectro[o]->SetLineColor(cor_esp[o]);
+    espectro[o]->SetLineWidth(2);
+    espectro[o]->SetStats(0);
+    espectro[o]->Draw("HIST E");
+  }
+  c13->Update();
+  c13->SaveAs("soma_pt_iso_por_origem.png");
+
   // ================================================================
   //  RESUMO
   // ================================================================
+  // Os somados ja' foram multiplicados por sp_fator. Para voltar a mb basta
+  // desfazer essa multiplicacao -- assim a tabela sai nas DUAS unidades e
+  // nao fica dependendo de em que modo a macro foi chamada.
+  Bool_t outra_unidade = (sp_fator != 1.);
+
   printf("=============================================\n");
-  printf("  ESPECTRO SOMADO (integral em %s)\n", sp_eixo);
-  printf("    pT dos jatos    : %.6g\n", hist_pt_jato->Integral());
-  printf("    pT dos fotons   : %.6g\n", hist_pt_foton->Integral());
+  printf("  ESPECTRO SOMADO (integral)\n");
+  printf("    pT dos jatos    : %.6e mb", hist_pt_jato->Integral() / sp_fator);
+  if (outra_unidade) printf("   = %.6g %s", hist_pt_jato->Integral(), sp_eixo);
+  printf("\n");
+  printf("    pT dos fotons   : %.6e mb", hist_pt_foton->Integral() / sp_fator);
+  if (outra_unidade) printf("   = %.6g %s", hist_pt_foton->Integral(), sp_eixo);
+  printf("\n");
+
   printf("---------------------------------------------\n");
-  printf("  FOTONS ENERGETICOS SOMADOS, por origem (%s)\n", sp_eixo);
-  printf("  %-8s %14s %14s\n", "origem", "isolado", "nao isolado");
+  printf("  FOTONS ENERGETICOS SOMADOS, por origem\n");
+
+  if (outra_unidade)
+    printf("  %-8s %14s %14s %13s %13s\n", "origem",
+           "iso [mb]", "nao-iso [mb]", "iso [eixo]", "nao-iso[eixo]");
+  else
+    printf("  %-8s %14s %14s\n", "origem", "iso [mb]", "nao-iso [mb]");
 
   for (Int_t o = 0; o < NORIGENS; o++)
   {
@@ -427,7 +503,33 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
       s_iso += hist_z_iso   [o][f]->Integral();
       s_nao += hist_z_naoiso[o][f]->Integral();
     }
-    printf("  %-8s %14.4f %14.4f\n", curto_origem[o], s_iso, s_nao);
+
+    if (outra_unidade)
+      printf("  %-8s %14.6e %14.6e %13.4f %13.4f\n", curto_origem[o],
+             s_iso / sp_fator, s_nao / sp_fator, s_iso, s_nao);
+    else
+      printf("  %-8s %14.6e %14.6e\n", curto_origem[o],
+             s_iso / sp_fator, s_nao / sp_fator);
+  }
+
+  // ---- espectro de pT dos isolados, por origem (os histogramas novos).
+  // Esta integral conta TODO foton isolado, inclusive os sem jato, entao e'
+  // naturalmente maior que a coluna "iso" da tabela de cima, que vem dos
+  // histogramas de z e por isso exige um jato associado.
+  printf("---------------------------------------------\n");
+  printf("  ESPECTRO DE pT DOS ISOLADOS, 5 a 40 GeV/c\n");
+  printf("  (conta tambem os que nao cairam em jato)\n");
+
+  TH1F *esp_res[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_frag,
+                             hist_pt_iso_outro};
+  const char *nome_res[NORIGENS] = {"pi0", "frag", "outro"};
+
+  for (Int_t o = 0; o < NORIGENS; o++)
+  {
+    printf("  %-8s %14.6e mb", nome_res[o],
+           esp_res[o]->Integral() / sp_fator);
+    if (outra_unidade) printf("   = %.4f %s", esp_res[o]->Integral(), sp_eixo);
+    printf("   (%.0f entradas brutas)\n", esp_res[o]->GetEntries());
   }
 
   printf("=============================================\n");
@@ -436,5 +538,5 @@ void soma_pthat(Double_t eventos_equiv = 100000.)
   // pertencem a ele, e os canvases ficariam em branco. O Write() grava.
   arquivo->Write();
   printf("  Arquivo salvo: soma_pthat.root\n");
-  printf("  12 PNGs salvos com prefixo soma_\n");
+  printf("  13 PNGs salvos com prefixo soma_\n");
 }

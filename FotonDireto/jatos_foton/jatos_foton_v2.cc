@@ -80,6 +80,13 @@ TH1F   *hist_assimetria  = 0;
 TH1F   *hist_z_gama      = 0;   // foton LIDER do decaimento do pi0 (como antes)
 TH1F   *hist_soma_cone   = 0;   // soma de pT no cone, dos fotons energeticos
 
+// Espectro de pT dos fotons ISOLADOS, um histograma por origem. Mesmo
+// binning do hist_pt_direto_iso da foton_direto.cc, para o RUIDO de cada
+// origem poder ser sobreposto ao SINAL dos fotons diretos.
+TH1F   *hist_pt_iso_pi0   = 0;
+TH1F   *hist_pt_iso_frag  = 0;
+TH1F   *hist_pt_iso_outro = 0;
+
 // Informacao da rodada: secao de choque, numero de eventos e peso.
 // TH1D (nao TH1F) porque sigma em mb precisa de precisao dupla.
 TH1D   *hist_sigma       = 0;
@@ -331,6 +338,21 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   sprintf(titulo, "soma de pT no cone, #gamma energeticos (R < %.1f);"
       "#Sigma pT^{cone} [GeV/c];#gamma", R_iso);
   hist_soma_cone = new TH1F("hist_soma_cone", titulo, 80, 0, 40);
+
+  // ---- espectro de pT dos fotons ISOLADOS, um histograma por origem.
+  // 35 bins de 5 a 40 GeV/c, ou seja 1 GeV por bin. E' EXATAMENTE o binning
+  // do hist_pt_direto_iso da foton_direto.cc, de proposito: assim o ruido
+  // de cada origem e o sinal dos fotons diretos podem ser desenhados no
+  // mesmo grafico, bin por bin, sem reamostrar nada.
+  hist_pt_iso_pi0   = new TH1F("hist_pt_iso_pi0",
+      "#gamma isolado de #pi^{0};p_{T}^{#gamma} [GeV/c];#gamma",
+      35, 5., 40.);
+  hist_pt_iso_frag  = new TH1F("hist_pt_iso_frag",
+      "#gamma isolado de fragmentacao;p_{T}^{#gamma} [GeV/c];#gamma",
+      35, 5., 40.);
+  hist_pt_iso_outro = new TH1F("hist_pt_iso_outro",
+      "#gamma isolado de outro hadron;p_{T}^{#gamma} [GeV/c];#gamma",
+      35, 5., 40.);
 
   // ---- histogramas fatiados por faixa.
   // Nome e titulo sao montados com sprintf porque mudam de faixa para faixa.
@@ -598,6 +620,18 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
       Bool_t isolado = (soma_pt_cone < pt_iso_max);
 
       hist_soma_cone->Fill(soma_pt_cone);
+
+      // ---- espectro de pT do foton ISOLADO, por origem.
+      // Preenchido AQUI: logo depois de decidir o isolamento e ANTES de
+      // procurar o jato associado. Nao depende de jato nenhum, entao conta
+      // tambem os fotons isolados que nao cairam em nenhum jato
+      // reconstruido (os que mais abaixo entram em n_sem_jato).
+      if (isolado)
+      {
+        if      (origem == 0) hist_pt_iso_pi0  ->Fill(pt_foton);
+        else if (origem == 1) hist_pt_iso_outro->Fill(pt_foton);
+        else if (origem == 2) hist_pt_iso_frag ->Fill(pt_foton);
+      }
 
       // ---- jato associado: aquele que CONTEM este foton.
       // Sem o corte de rapidez do jato: o corte de eta ja' foi aplicado

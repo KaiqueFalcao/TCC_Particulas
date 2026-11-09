@@ -236,9 +236,14 @@ void compara_pthat(Bool_t normalizar_pela_maior = kTRUE)
          soma_das_partes);
   printf("    media das 4  %12.5e   <-- ordem de grandeza do valor fisico\n",
          soma_das_partes / NRODADAS);
-  printf("  A melhor estimativa nesta regiao e' a da rodada de pThat mais\n");
-  printf("  alto, que e' a que tem mais estatistica aqui (ou uma media\n");
-  printf("  ponderada pelos erros). A media simples acima e' so' indicativa.\n");
+  printf("  ATENCAO -- qual das 4 vale: NAO e' a de pThat mais alto.\n");
+  printf("  Uma rodada de pTHatMin = X e' INCOMPLETA para observavel perto\n");
+  printf("  de X: faltam os eventos de pThat abaixo de X que flutuaram para\n");
+  printf("  cima. A pthat15 tem muita estatistica em pT^jato > 20, mas esta'\n");
+  printf("  enviesada para BAIXO justamente por isso -- repare que ela e' a\n");
+  printf("  menor das quatro.\n");
+  printf("  Vale a rodada de MENOR pThat que ainda tenha estatistica aqui.\n");
+  printf("  A media simples acima e' so' indicativa, nao use como resultado.\n");
   printf("\n  Se os 4 valores acima batem entre si, cada rodada esta'\n");
   printf("  normalizada certo, e a SOMA conta a mesma regiao 4 vezes.\n");
   printf("=============================================\n");
