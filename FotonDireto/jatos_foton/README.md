@@ -43,18 +43,21 @@ Ao citar número daqui num texto, diga qual convenção está usando.
 
 ## Resultado
 
-Soma das 4 faixas de pThat, 400 mil eventos, em ocorrências equivalentes a
-100 mil eventos de pThat > 4 GeV:
+Ruído: **4 milhões** de eventos `HardQCD`, 1 milhão por faixa de pThat.
+Sinal: 400 mil de `PromptPhoton`, 100 mil por faixa. Tudo pesado por σ/N.
 
-| origem | isolados | total | fração isolada |
-|---|---|---|---|
-| π⁰ | 6,00 ± 1,70 | 70,5 ± 3,0 | **8,5 %** |
-| outro hádron | 1,08 ± 0,30 | 12,8 ± 1,1 | **8,5 %** |
-| fragmentação | 1,49 ± 0,37 | 2,08 ± 0,41 | **71,6 %** |
+**Fração isolada, por origem** — a ordenação é o resultado central:
 
-O isolamento guarda **71,6 %** dos fótons de fragmentação e só **8,5 %** dos de
-decaimento. A fração de **fragmentação** na amostra sobe de **2,44 %** para
-**17,41 %**, um ganho de **7,1×**.
+| origem | fração isolada |
+|---|---|
+| **fóton direto** (sinal) | **89,2 %** |
+| fragmentação | 67,9 % |
+| outro hádron | 12,4 % |
+| π⁰ | 10,5 % |
+
+O isolamento guarda quase nove em cada dez fótons diretos e descarta nove em
+cada dez de decaimento. É exatamente o que deveria fazer: o fóton direto
+nasce sozinho no processo duro, o de decaimento vem dentro de um jato.
 
 (Note que aqui a fragmentação é o que está sendo enriquecido, porque esta
 amostra é só `HardQCD:all` e não contém fóton direto nenhum. O sinal de
@@ -72,16 +75,19 @@ verdade está na seção seguinte.)
 | fótons energéticos | 7541 |
 | **diretos** | 7278 (96,5 %) |
 | **diretos e isolados** | 6349 (**87,2 %** dos diretos) |
+
+Somando as 4 faixas de pThat com peso σ/N, a fração isolada do sinal é
+**89,2 %**. O número acima, 87,2 %, é da rodada única de pThat > 5.
 | σ no gráfico, 5–40 GeV/c | 4,718 × 10⁻⁴ mb |
 
 A fração isolada põe as quatro origens em ordem:
 
 | origem | fração isolada |
 |---|---|
-| **direto** (sinal) | **87,2 %** |
-| fragmentação | 71,6 % |
-| π⁰ | 8,5 % |
-| outro hádron | 8,5 % |
+| **direto** (sinal) | **89,2 %** |
+| fragmentação | 67,9 % |
+| outro hádron | 12,4 % |
+| π⁰ | 10,5 % |
 
 É exatamente o que o isolamento deveria fazer: o fóton direto nasce sozinho no
 processo duro, então quase sempre passa; o de decaimento vem dentro de um jato
@@ -144,15 +150,15 @@ O espectro reproduz o PDG na terceira casa:
 
 | origem | marcado | **sem parceiro visível** |
 |---|---|---|
-| π⁰ | 41,2 % | **57,8 %** |
-| outro hádron | 0 % | 88,0 % |
-| fragmentação | 0 % | 95,1 % |
+| π⁰ | 33,8 % | **62,3 %** |
+| outro hádron | 0,7 % | 95,1 % |
+| fragmentação | **0,0 %** | 98,5 % |
 
-A marcação tira **27,8 %** da amostra isolada e **não custa nada** em
+A marcação tira **22,1 %** da amostra isolada e **não custa nada** em
 fragmentação — nenhum fóton de fragmentação foi marcado por engano. A fração
-de fragmentação sobe de 20,4 % para 28,3 %.
+de fragmentação sobe de 20,4 % para 26,2 %.
 
-Mas o número que importa é o outro: **57,8 % dos fótons de π⁰ não têm
+Mas o número que importa é o outro: **62,3 % dos fótons de π⁰ não têm
 parceiro visível nenhum**. Esses não há técnica de massa que resolva — é o
 **fundo irredutível**, e existe exatamente pelo motivo que motiva o trabalho:
 o decaimento do π⁰ tem assimetria plana, então uma fração constante dos
@@ -161,6 +167,46 @@ decaimentos joga quase toda a energia num fóton só.
 O limiar de 0,5 GeV/c no parceiro é o parâmetro que manda nesse número. Ele
 imita o limiar de cluster de um calorímetro real. Baixá-lo faria a marcação
 parecer melhor do que é.
+
+### Os marcados são removidos
+
+Cada rodada grava **dois** espectros pareados:
+
+| histograma | conteúdo |
+|---|---|
+| `hist_pt_iso_<origem>` | isolado — antes da marcação |
+| `hist_pt_pos_<origem>` | isolado **e não marcado** — depois |
+
+A ordem é isolamento primeiro, massa invariante depois.
+
+### Suposição declarada: a marcação não remove fóton direto
+
+A marcação é aplicada **só ao ruído**. Na curva de pureza o sinal é o mesmo
+histograma nas duas etapas.
+
+O motivo é que a massa invariante existe para retirar fóton de **decaimento**
+de π⁰, e na amostra de sinal a verdade da simulação já garante que todo fóton
+é direto — não há decaimento para retirar. Aplicá-la ali mediria outra coisa:
+quantos fótons diretos cairiam na janela do π⁰ **por acaso**, formando par com
+um fóton qualquer do evento.
+
+Esse efeito deve ser desprezível. Para um par dar a massa do π⁰ os dois fótons
+precisam estar muito próximos em ângulo, e o fóton direto isolado, por
+definição, tem pouca coisa em volta.
+
+**Como conferir o tamanho da suposição:** o fóton de **fragmentação** do ruído
+é o análogo mais próximo do direto — também não vem de decaimento e também
+sobrevive ao isolamento. A coluna `marcado %` da tabela de marcação mostra
+quantos deles são marcados por engano.
+
+**O número, com 4 milhões de eventos:** nenhum dos **386** fótons de
+fragmentação isolados foi marcado. Pela regra de três de Poisson, zero em
+386 dá um limite de
+
+> marcação acidental em fótons tipo-sinal **< 0,8 %** a 95 % de confiança
+
+A suposição está sustentada pelos dados, não só pelo argumento. Com 400 mil
+eventos o limite era de ~7 %, frouxo demais para citar.
 
 ---
 
@@ -177,38 +223,43 @@ justamente em pT baixo, onde há mais estatística.
 
 Integrado de 5 a 40 GeV/c:
 
-| | |
-|---|---|
-| sinal (γ direto) | 6,415 × 10⁻⁴ mb |
-| ruído total | 1,282 × 10⁻² mb |
-| — π⁰ | 8,672 × 10⁻³ mb |
-| — outro hádron | 1,532 × 10⁻³ mb |
-| — fragmentação | 2,619 × 10⁻³ mb |
-| **pureza** (sinal = direto) | **4,76 %** |
-| contaminação | 95,24 % |
-| **pureza** (sinal = direto + fragmentação) | **24,22 %** |
-
-Diferencial em pT:
-
-| pT [GeV/c] | pureza | N_B |
+| | só isolamento | + massa invariante |
 |---|---|---|
-| 5 – 10 | 4,0 % ± 0,8 % | 24 |
-| 10 – 15 | 24,0 % ± 7,8 % | 6 |
-| 15 – 20 | 21,8 % ± 8,5 % | 4 |
-| 25 – 30 | 9,1 % ± 5,8 % | 2 |
+| sinal (γ direto) | 6,437 × 10⁻⁴ mb | 6,437 × 10⁻⁴ mb |
+| ruído total | 1,732 × 10⁻² mb | 1,349 × 10⁻² mb |
+| — π⁰ | 1,128 × 10⁻² mb | 7,463 × 10⁻³ mb |
+| — outro hádron | 2,516 × 10⁻³ mb | 2,497 × 10⁻³ mb |
+| — fragmentação | 3,526 × 10⁻³ mb | 3,526 × 10⁻³ mb |
+| **pureza** | **3,58 %** | **4,56 %** |
 
-**Limite de estatística, e é sério.** O fundo tem só **116 eventos de Monte
-Carlo** no espectro inteiro, contra 27 485 do sinal — fóton isolado e
-energético é raro em `HardQCD:all`. O valor integrado é dominado pela região
-de pT baixo e é confiável. A curva bin a bin em pT alto **não é**: um único
-evento carrega peso grande, e `N_B` na tabela mostra quantos eventos efetivos
-sustentam cada ponto.
+A marcação por massa tira 22,1 % do ruído e dá **+0,97 ponto** de pureza. O
+sinal é o mesmo nas duas colunas, pela suposição declarada acima.
 
-Os bins sem nenhum evento de fundo (20–25, 30–35, 35–40) aparecem como
-**vazios**, não como pureza de 100 %. Zero eventos gerados não quer dizer
-seção de choque zero — quer dizer que a amostra é pequena demais para dizer
-algo ali. Para a curva valer em pT alto é preciso mais estatística de
-HardQCD.
+Na convenção *prompt* (fragmentação conta como sinal), só com isolamento:
+**23,22 %**.
+
+Diferencial em pT — a pureza **sobe** com o pT, porque o espectro do sinal
+cai mais devagar que o do fundo:
+
+| pT [GeV/c] | só isolamento | + massa | N_B |
+|---|---|---|---|
+| 5 – 10 | 2,9 % ± 0,2 % | 3,8 % ± 0,3 % | 255 |
+| 10 – 15 | 18,7 % ± 2,3 % | 20,8 % ± 2,6 % | 44 |
+| 15 – 20 | 28,6 % ± 4,6 % | 30,2 % ± 5,0 % | 20 |
+| 20 – 25 | 29,5 % ± 8,3 % | 37,3 % ± 8,9 % | 6 |
+| 25 – 30 | 28,5 % ± 9,1 % | 28,5 % ± 9,1 % | 5 |
+| 30 – 35 | 32,5 % ± 15,5 % | 32,5 % ± 15,5 % | 2 |
+| 35 – 40 | 37,7 % ± 23,5 % | 37,7 % ± 23,5 % | 1 |
+
+**Estatística.** O fundo tem **1212 eventos** de Monte Carlo no espectro
+inteiro (eram 116 antes do 1 milhão por faixa), contra 27 485 do sinal. Todos
+os 7 bins agora têm fundo — antes três apareciam vazios. `N_B` é o número
+**efetivo** de eventos por bin, (conteúdo/erro)², e mostra que acima de
+25 GeV/c a curva ainda se apoia em poucas unidades. Ali o erro citado é
+grande de propósito; não é para ser lido como medida precisa.
+
+Bins sem nenhum evento de fundo apareceriam **vazios**, não como pureza de
+100 %: zero eventos gerados não quer dizer seção de choque zero.
 
 ---
 

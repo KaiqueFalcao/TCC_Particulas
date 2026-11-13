@@ -15,7 +15,9 @@ Mede a **contaminação na identificação de fótons isolados**: de tudo que pa
 num corte de isolamento, que fração é fóton direto e que fração é fundo de
 decaimento de hádrons?
 
-**Resposta: a pureza é 4,76 %** (24,22 % se a fragmentação contar como sinal).
+**Resposta: a pureza é 3,58 %** só com o isolamento, e **4,56 %** somando a
+marcação por massa invariante. Na convenção em que a fragmentação conta como
+sinal, 23,22 %.
 
 Sinal e fundo são gerados como duas amostras separadas e comparados em
 seção de choque:

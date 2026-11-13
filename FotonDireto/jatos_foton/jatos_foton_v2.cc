@@ -97,6 +97,12 @@ TH1F   *hist_pt_iso_outro = 0;
 TH1F   *hist_massa_gg        = 0;   // todos os pares, todos os energeticos
 TH1F   *hist_massa_melhor[NORIGENS];// o par mais proximo do pi0, so' isolados
 
+// Espectro de pT DEPOIS da marcacao: os fotons marcados como filhos de pi0
+// sao jogados fora. E' a amostra que sobra para a analise de verdade.
+TH1F   *hist_pt_pos_pi0   = 0;
+TH1F   *hist_pt_pos_frag  = 0;
+TH1F   *hist_pt_pos_outro = 0;
+
 // Informacao da rodada: secao de choque, numero de eventos e peso.
 // TH1D (nao TH1F) porque sigma em mb precisa de precisao dupla.
 TH1D   *hist_sigma       = 0;
@@ -423,6 +429,17 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
     hist_massa_melhor[o] = new TH1F(nome, titulo, 500, 0., 1.);
   }
 
+  // ---- espectro de pT DEPOIS da marcacao, mesmo binning do de antes.
+  // Par a par com os hist_pt_iso_*: um e' a amostra isolada, o outro e' a
+  // mesma amostra com os marcados removidos. A razao entre os dois e' a
+  // eficiencia do corte de massa em funcao do pT.
+  hist_pt_pos_pi0   = new TH1F("hist_pt_pos_pi0",
+      "#gamma de #pi^{0}, isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma", 35, 5., 40.);
+  hist_pt_pos_frag  = new TH1F("hist_pt_pos_frag",
+      "#gamma de fragmentacao, isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma", 35, 5., 40.);
+  hist_pt_pos_outro = new TH1F("hist_pt_pos_outro",
+      "#gamma de outro hadron, isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma", 35, 5., 40.);
+
   // ---- histogramas fatiados por faixa.
   // Nome e titulo sao montados com sprintf porque mudam de faixa para faixa.
   // A ultima faixa recebe o rotulo "> 20" em vez de "20 - 1000".
@@ -742,10 +759,28 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
       {
         n_iso_tot[origem]++;
 
+        // MARCADO: existe um parceiro visivel E o par cai na janela do pi0.
+        // Sem parceiro visivel o foton NAO e' marcado -- e e' justamente
+        // esse o caso irredutivel: o irmao ficou abaixo do limiar e nao ha'
+        // como saber que ele existiu.
+        Bool_t marcado = (massa_melhor >= 0 && dist_melhor < janela_pi0);
+
         if (massa_melhor >= 0)
         {
           hist_massa_melhor[origem]->Fill(massa_melhor);
-          if (dist_melhor < janela_pi0) n_marcado[origem]++;
+          if (marcado) n_marcado[origem]++;
+        }
+
+        // ---- AQUI o foton marcado e' de fato REMOVIDO.
+        // Ate' esta versao o codigo so' CONTAVA os marcados; o espectro
+        // seguia com eles dentro. Agora ha' dois espectros: hist_pt_iso_*
+        // (antes) e hist_pt_pos_* (depois), e e' o segundo que entra na
+        // pureza pos-marcacao.
+        if (!marcado)
+        {
+          if      (origem == 0) hist_pt_pos_pi0  ->Fill(pt_foton);
+          else if (origem == 1) hist_pt_pos_outro->Fill(pt_foton);
+          else if (origem == 2) hist_pt_pos_frag ->Fill(pt_foton);
         }
       }
 

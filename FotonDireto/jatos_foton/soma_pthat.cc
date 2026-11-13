@@ -79,6 +79,11 @@ TH1F *hist_pt_iso_outro = 0;
 TH1F *hist_massa_gg = 0;
 TH1F *hist_massa_melhor[NORIGENS];
 
+// Espectro DEPOIS da marcacao: os marcados como filhos de pi0 foram removidos
+TH1F *hist_pt_pos_pi0   = 0;
+TH1F *hist_pt_pos_frag  = 0;
+TH1F *hist_pt_pos_outro = 0;
+
 TH2F *hist_td[NFAIXAS] = {0, 0, 0, 0, 0, 0};
 TH2F *hist_Z [NFAIXAS] = {0, 0, 0, 0, 0, 0};
 TH2F *hist_AZ[NFAIXAS] = {0, 0, 0, 0, 0, 0};
@@ -286,6 +291,11 @@ void soma_pthat(Double_t eventos_equiv = 0.)
     hist_massa_melhor[o] = soma_1d(nome);
   }
 
+  // espectro depois da marcacao
+  hist_pt_pos_pi0   = soma_1d("hist_pt_pos_pi0");
+  hist_pt_pos_frag  = soma_1d("hist_pt_pos_frag");
+  hist_pt_pos_outro = soma_1d("hist_pt_pos_outro");
+
   hist_eta_phi    = soma_2d("hist_eta_phi");
 
   for (Int_t f = 0; f < NFAIXAS; f++)
@@ -314,7 +324,7 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // Os tres espectros por origem sao novos: se faltarem, o .root foi gerado
   // por uma versao da jatos_foton_v2.cc anterior a eles.
   if (!hist_pt_iso_pi0 || !hist_pt_iso_frag || !hist_pt_iso_outro ||
-      !hist_massa_gg   || !hist_massa_melhor[2])
+      !hist_massa_gg   || !hist_massa_melhor[2] || !hist_pt_pos_pi0)
   {
     printf("  Faltam histogramas novos (hist_pt_iso_* ou hist_massa_*).\n");
     printf("  Rode a producao de novo:\n");
@@ -329,7 +339,7 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // ================================================================
   for (Int_t i = 0; i < NRODADAS; i++) sp_arquivo[i]->Close();
 
-  printf("  4 arquivos lidos e fechados. 68 histogramas somados.\n");
+  printf("  4 arquivos lidos e fechados. 71 histogramas somados.\n");
 
   // ================================================================
   //  4) ARQUIVO DE SAIDA
@@ -350,6 +360,9 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   hist_massa_gg    ->SetDirectory(arquivo);
   for (Int_t o = 0; o < NORIGENS; o++)
     hist_massa_melhor[o]->SetDirectory(arquivo);
+  hist_pt_pos_pi0  ->SetDirectory(arquivo);
+  hist_pt_pos_frag ->SetDirectory(arquivo);
+  hist_pt_pos_outro->SetDirectory(arquivo);
   hist_eta_phi   ->SetDirectory(arquivo);
 
   for (Int_t f = 0; f < NFAIXAS; f++)
@@ -642,6 +655,32 @@ void soma_pthat(Double_t eventos_equiv = 0.)
            antes_tot ? 100. * frag_tot   / antes_tot : 0.);
     printf("  fragmentacao DEPOIS   : %6.2f%%\n",
            sobra_tot ? 100. * sobra_frag / sobra_tot : 0.);
+  }
+
+  // ---- confere a remocao contra os espectros de fato removidos.
+  // A conta acima e' feita a partir do histograma de massa; esta e' feita
+  // a partir dos hist_pt_pos_*, que o jatos_foton_v2.cc preencheu so' com
+  // os fotons que SOBREVIVERAM. As duas tem que bater -- se nao baterem,
+  // ha' desacordo entre o que foi contado e o que foi removido.
+  printf("  ------------------------------------------\n");
+  printf("  ESPECTRO REMOVIDO DE FATO (hist_pt_pos_*)\n");
+  printf("  %-8s %13s %13s %10s\n",
+         "origem", "antes[mb]", "depois[mb]", "removido%");
+  {
+    TH1F *ant[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_outro,
+                           hist_pt_iso_frag};
+    TH1F *dep[NORIGENS] = {hist_pt_pos_pi0, hist_pt_pos_outro,
+                           hist_pt_pos_frag};
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      Int_t nb = ant[o]->GetNbinsX();
+      Double_t a = ant[o]->Integral(0, nb + 1) / sp_fator;
+      Double_t d = dep[o]->Integral(0, nb + 1) / sp_fator;
+
+      printf("  %-8s %13.4e %13.4e %9.2f%%\n", curto_origem[o], a, d,
+             a ? 100. * (a - d) / a : 0.);
+    }
   }
 
   // ---- espectro de pT dos isolados, por origem (os histogramas novos).
