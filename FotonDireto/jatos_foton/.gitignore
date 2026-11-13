@@ -22,9 +22,11 @@
 #   jatos_foton_pthat*.root   as 8 faixas de pThat, 100 mil eventos cada
 #   soma_pthat.root           a soma ponderada das 4 faixas com teto
 #   foton_direto_*.root       o SINAL, PromptPhoton:all
+#   pureza.root               sinal, ruido e a curva de pureza
 *.root
 !jatos_foton.root
 !jatos_foton_isolado.root
 !jatos_foton_pthat*.root
 !soma_pthat.root
 !foton_direto_*.root
+!pureza.root

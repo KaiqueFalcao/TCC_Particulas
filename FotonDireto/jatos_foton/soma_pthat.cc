@@ -34,11 +34,16 @@
 #include "TH1D.h"
 #include "TH2F.h"
 #include "TMath.h"
+#include "TLegend.h"
 #include "TROOT.h"
 
 const Int_t NRODADAS = 4;
 const Int_t NFAIXAS  = 6;
 const Int_t NORIGENS = 3;   // 0 = pi0, 1 = outro hadron, 2 = fragmentacao
+
+// Massa do pi0 e a janela usada para marcar, as mesmas da jatos_foton_v2.cc
+const Double_t M_PI0      = 0.1349768;   // GeV
+const Double_t JANELA_PI0 = 0.02;        // GeV
 
 // As 4 rodadas, na ordem das faixas de pThat
 const char *sp_sufixo[NRODADAS] = {"pthat04_07", "pthat07_10",
@@ -70,6 +75,10 @@ TH1F *hist_pt_iso_pi0   = 0;
 TH1F *hist_pt_iso_frag  = 0;
 TH1F *hist_pt_iso_outro = 0;
 
+// Massa invariante dos pares de fotons
+TH1F *hist_massa_gg = 0;
+TH1F *hist_massa_melhor[NORIGENS];
+
 TH2F *hist_td[NFAIXAS] = {0, 0, 0, 0, 0, 0};
 TH2F *hist_Z [NFAIXAS] = {0, 0, 0, 0, 0, 0};
 TH2F *hist_AZ[NFAIXAS] = {0, 0, 0, 0, 0, 0};
@@ -90,6 +99,7 @@ TCanvas *c10 = 0;
 TCanvas *c11 = 0;
 TCanvas *c12 = 0;
 TCanvas *c13 = 0;   // espectro de pT dos isolados, por origem
+TCanvas *c14 = 0;   // massa invariante
 
 // Soma um histograma de UMA dimensao das 4 rodadas, cada uma multiplicada
 // pelo peso da sua faixa. Devolve 0 se o histograma nao existir em algum
@@ -268,6 +278,14 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   hist_pt_iso_frag  = soma_1d("hist_pt_iso_frag");
   hist_pt_iso_outro = soma_1d("hist_pt_iso_outro");
 
+  // massa invariante dos pares de fotons
+  hist_massa_gg = soma_1d("hist_massa_gg");
+  for (Int_t o = 0; o < NORIGENS; o++)
+  {
+    sprintf(nome, "hist_massa_melhor_%s", curto_origem[o]);
+    hist_massa_melhor[o] = soma_1d(nome);
+  }
+
   hist_eta_phi    = soma_2d("hist_eta_phi");
 
   for (Int_t f = 0; f < NFAIXAS; f++)
@@ -295,9 +313,11 @@ void soma_pthat(Double_t eventos_equiv = 0.)
 
   // Os tres espectros por origem sao novos: se faltarem, o .root foi gerado
   // por uma versao da jatos_foton_v2.cc anterior a eles.
-  if (!hist_pt_iso_pi0 || !hist_pt_iso_frag || !hist_pt_iso_outro)
+  if (!hist_pt_iso_pi0 || !hist_pt_iso_frag || !hist_pt_iso_outro ||
+      !hist_massa_gg   || !hist_massa_melhor[2])
   {
-    printf("  Faltam os hist_pt_iso_*. Rode a producao de novo:\n");
+    printf("  Faltam histogramas novos (hist_pt_iso_* ou hist_massa_*).\n");
+    printf("  Rode a producao de novo:\n");
     printf("    ./producao.sh 100000 teto\n");
     return;
   }
@@ -309,7 +329,7 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // ================================================================
   for (Int_t i = 0; i < NRODADAS; i++) sp_arquivo[i]->Close();
 
-  printf("  4 arquivos lidos e fechados. 64 histogramas somados.\n");
+  printf("  4 arquivos lidos e fechados. 68 histogramas somados.\n");
 
   // ================================================================
   //  4) ARQUIVO DE SAIDA
@@ -327,6 +347,9 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   hist_pt_iso_pi0  ->SetDirectory(arquivo);
   hist_pt_iso_frag ->SetDirectory(arquivo);
   hist_pt_iso_outro->SetDirectory(arquivo);
+  hist_massa_gg    ->SetDirectory(arquivo);
+  for (Int_t o = 0; o < NORIGENS; o++)
+    hist_massa_melhor[o]->SetDirectory(arquivo);
   hist_eta_phi   ->SetDirectory(arquivo);
 
   for (Int_t f = 0; f < NFAIXAS; f++)
@@ -469,6 +492,57 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   c13->Update();
   c13->SaveAs("soma_pt_iso_por_origem.png");
 
+  // ---- c14: MASSA INVARIANTE, ja' somada e pesada por secao de choque
+  c14 = new TCanvas("c14", "SOMA -- massa invariante", 1500, 500);
+  c14->Divide(3, 1);
+
+  c14->cd(1);
+  gPad->SetLogy();  gPad->SetLeftMargin(0.16);
+  hist_massa_gg->SetStats(0);
+  hist_massa_gg->SetLineColor(kBlack);
+  hist_massa_gg->SetLineWidth(2);
+  hist_massa_gg->SetYTitle(sp_eixo);
+  hist_massa_gg->Draw("HIST E");
+
+  // zoom numa COPIA, para nao mexer no eixo do que vai para o .root
+  c14->cd(2);
+  gPad->SetLeftMargin(0.16);
+  TH1F *zoom = (TH1F*) hist_massa_gg->Clone("sp_massa_zoom");
+  zoom->SetDirectory(0);
+  zoom->SetTitle("zoom no #pi^{0}");
+  zoom->GetXaxis()->SetRangeUser(0., 0.3);
+  zoom->SetLineColor(kBlue);
+  zoom->Draw("HIST E");
+
+  c14->cd(3);
+  gPad->SetLogy();  gPad->SetLeftMargin(0.16);
+  {
+    Int_t cor_m[NORIGENS] = {kBlue, kGreen + 2, kRed};
+    Double_t topo_m = 0;
+    for (Int_t o = 0; o < NORIGENS; o++)
+      if (hist_massa_melhor[o]->GetMaximum() > topo_m)
+        topo_m = hist_massa_melhor[o]->GetMaximum();
+
+    TLegend *leg_m = new TLegend(0.45, 0.70, 0.89, 0.89);
+    leg_m->SetTextSize(0.035);
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      hist_massa_melhor[o]->SetTitle("melhor par, #gamma ISOLADO");
+      hist_massa_melhor[o]->SetStats(0);
+      hist_massa_melhor[o]->SetLineColor(cor_m[o]);
+      hist_massa_melhor[o]->SetLineWidth(2);
+      hist_massa_melhor[o]->SetMaximum(topo_m * 2.);
+      hist_massa_melhor[o]->SetYTitle(sp_eixo);
+      hist_massa_melhor[o]->GetXaxis()->SetRangeUser(0., 0.5);
+      hist_massa_melhor[o]->Draw(o == 0 ? "HIST E" : "HIST E SAME");
+      leg_m->AddEntry(hist_massa_melhor[o], curto_origem[o], "l");
+    }
+    leg_m->Draw();
+  }
+  c14->Update();
+  c14->SaveAs("soma_massa_invariante.png");
+
   // ================================================================
   //  RESUMO
   // ================================================================
@@ -512,6 +586,64 @@ void soma_pthat(Double_t eventos_equiv = 0.)
              s_iso / sp_fator, s_nao / sp_fator);
   }
 
+  // ---- MARCACAO POR MASSA INVARIANTE, pesada por secao de choque.
+  // Esta e' a versao que vale: os contadores crus que cada rodada
+  // imprime sao por faixa de pThat e nao podem ser somados direto.
+  printf("---------------------------------------------\n");
+  printf("  MARCACAO POR MASSA INVARIANTE\n");
+  printf("  Marcado = existe parceiro com |m - m_pi0| < %.0f MeV\n",
+         JANELA_PI0 * 1000.);
+  // ATENCAO ao denominador. O hist_massa_melhor so' e' preenchido quando
+  // existe ALGUM parceiro visivel. O foton cujo irmao ficou abaixo do
+  // limiar nao entra nele -- e e' justamente esse o fundo IRREDUTIVEL.
+  // Usar o hist_massa_melhor como denominador daria a eficiencia "entre
+  // os que tem parceiro", que e' otimista e nao responde nada. O
+  // denominador certo e' o total de isolados, do hist_pt_iso_*.
+  printf("  %-8s %12s %12s %12s %8s %9s\n", "origem",
+         "isolado[mb]", "c/ parc[mb]", "marcado[mb]",
+         "marcado%", "s/ parc%");
+
+  {
+    // na ordem de curto_origem: pi0, outro hadron, fragmentacao
+    TH1F *iso_org[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_outro,
+                               hist_pt_iso_frag};
+
+    Int_t b_lo = hist_massa_melhor[0]->FindBin(M_PI0 - JANELA_PI0);
+    Int_t b_hi = hist_massa_melhor[0]->FindBin(M_PI0 + JANELA_PI0);
+
+    Double_t antes_tot = 0, sobra_tot = 0, sobra_frag = 0, frag_tot = 0;
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      // Integral(0, n+1) inclui o overflow: o foton de pT acima de 40
+      // GeV/c existe e tem que entrar na conta.
+      Int_t nb = iso_org[o]->GetNbinsX();
+      Double_t tot  = iso_org[o]->Integral(0, nb + 1) / sp_fator;
+
+      Double_t comp = hist_massa_melhor[o]->Integral() / sp_fator;
+      Double_t marc = hist_massa_melhor[o]->Integral(b_lo, b_hi) / sp_fator;
+
+      printf("  %-8s %12.4e %12.4e %12.4e %7.2f%% %8.2f%%\n",
+             curto_origem[o], tot, comp, marc,
+             tot ? 100. * marc / tot : 0.,
+             tot ? 100. * (tot - comp) / tot : 0.);
+
+      antes_tot += tot;
+      sobra_tot += tot - marc;
+      if (o == 2) { sobra_frag = tot - marc; frag_tot = tot; }
+    }
+
+    printf("  ------------------------------------------\n");
+    printf("  amostra isolada ANTES : %.6e mb\n", antes_tot);
+    printf("  amostra isolada DEPOIS: %.6e mb\n", sobra_tot);
+    printf("  rejeitado pela marcacao: %6.2f%%\n",
+           antes_tot ? 100. * (antes_tot - sobra_tot) / antes_tot : 0.);
+    printf("  fragmentacao ANTES    : %6.2f%%\n",
+           antes_tot ? 100. * frag_tot   / antes_tot : 0.);
+    printf("  fragmentacao DEPOIS   : %6.2f%%\n",
+           sobra_tot ? 100. * sobra_frag / sobra_tot : 0.);
+  }
+
   // ---- espectro de pT dos isolados, por origem (os histogramas novos).
   // Esta integral conta TODO foton isolado, inclusive os sem jato, entao e'
   // naturalmente maior que a coluna "iso" da tabela de cima, que vem dos
@@ -538,5 +670,5 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // pertencem a ele, e os canvases ficariam em branco. O Write() grava.
   arquivo->Write();
   printf("  Arquivo salvo: soma_pthat.root\n");
-  printf("  13 PNGs salvos com prefixo soma_\n");
+  printf("  14 PNGs salvos com prefixo soma_\n");
 }

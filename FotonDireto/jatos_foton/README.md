@@ -125,6 +125,93 @@ aceita `pt_hat_max` para isso.
 
 ---
 
+## Massa invariante: quanto do fundo dá para marcar
+
+Um fóton energético isolado pode ser, na verdade, filho de um π⁰ cujo irmão
+ficou mole demais para ser notado. Para pegar esses, cada fóton energético é
+combinado com **todo outro fóton** do evento que um calorímetro veria
+(|η| < 0,9 e pT > 0,5 GeV/c) e a massa do par é calculada. Se algum par cair
+na massa do π⁰, o fóton é marcado.
+
+O espectro reproduz o PDG na terceira casa:
+
+| pico medido | partícula | PDG |
+|---|---|---|
+| 0,1350 | π⁰ | 0,13498 |
+| 0,5470 | η | 0,54786 |
+
+**O resultado da marcação** (somado nas 4 faixas, pesado por σ):
+
+| origem | marcado | **sem parceiro visível** |
+|---|---|---|
+| π⁰ | 41,2 % | **57,8 %** |
+| outro hádron | 0 % | 88,0 % |
+| fragmentação | 0 % | 95,1 % |
+
+A marcação tira **27,8 %** da amostra isolada e **não custa nada** em
+fragmentação — nenhum fóton de fragmentação foi marcado por engano. A fração
+de fragmentação sobe de 20,4 % para 28,3 %.
+
+Mas o número que importa é o outro: **57,8 % dos fótons de π⁰ não têm
+parceiro visível nenhum**. Esses não há técnica de massa que resolva — é o
+**fundo irredutível**, e existe exatamente pelo motivo que motiva o trabalho:
+o decaimento do π⁰ tem assimetria plana, então uma fração constante dos
+decaimentos joga quase toda a energia num fóton só.
+
+O limiar de 0,5 GeV/c no parceiro é o parâmetro que manda nesse número. Ele
+imita o limiar de cluster de um calorímetro real. Baixá-lo faria a marcação
+parecer melhor do que é.
+
+---
+
+## Pureza: quanto do sinal é ruído?
+
+```
+pureza(pT) = S(pT) / [ S(pT) + B(pT) ]
+```
+
+Com as **duas amostras somadas nas mesmas 4 faixas de pThat**, cada uma pesada
+pela sua própria σ. Isso não é detalhe: uma rodada de `pTHatMin = X` é
+incompleta perto de X, e comparar faixas diferentes estragaria a pureza
+justamente em pT baixo, onde há mais estatística.
+
+Integrado de 5 a 40 GeV/c:
+
+| | |
+|---|---|
+| sinal (γ direto) | 6,415 × 10⁻⁴ mb |
+| ruído total | 1,282 × 10⁻² mb |
+| — π⁰ | 8,672 × 10⁻³ mb |
+| — outro hádron | 1,532 × 10⁻³ mb |
+| — fragmentação | 2,619 × 10⁻³ mb |
+| **pureza** (sinal = direto) | **4,76 %** |
+| contaminação | 95,24 % |
+| **pureza** (sinal = direto + fragmentação) | **24,22 %** |
+
+Diferencial em pT:
+
+| pT [GeV/c] | pureza | N_B |
+|---|---|---|
+| 5 – 10 | 4,0 % ± 0,8 % | 24 |
+| 10 – 15 | 24,0 % ± 7,8 % | 6 |
+| 15 – 20 | 21,8 % ± 8,5 % | 4 |
+| 25 – 30 | 9,1 % ± 5,8 % | 2 |
+
+**Limite de estatística, e é sério.** O fundo tem só **116 eventos de Monte
+Carlo** no espectro inteiro, contra 27 485 do sinal — fóton isolado e
+energético é raro em `HardQCD:all`. O valor integrado é dominado pela região
+de pT baixo e é confiável. A curva bin a bin em pT alto **não é**: um único
+evento carrega peso grande, e `N_B` na tabela mostra quantos eventos efetivos
+sustentam cada ponto.
+
+Os bins sem nenhum evento de fundo (20–25, 30–35, 35–40) aparecem como
+**vazios**, não como pureza de 100 %. Zero eventos gerados não quer dizer
+seção de choque zero — quer dizer que a amostra é pequena demais para dizer
+algo ali. Para a curva valer em pT alto é preciso mais estatística de
+HardQCD.
+
+---
+
 ## Como abrir os resultados sem rodar nada
 
 Todos os `.root` estão versionados. Entre na pasta e escolha o que quer ver:
@@ -137,6 +224,8 @@ Todos os `.root` estão versionados. Entre na pasta e escolha o que quer ver:
 | as 4 faixas sem a soma | `root -l 've_faixas.cc(1)'` |
 | as 4 faixas em ocorrências | `root -l 've_faixas.cc(0, 100000)'` |
 | o sinal (fótons diretos) | `root -l 'abre_jatos_foton_v2.cc("foton_direto_pthat05.root")'` |
+| **a pureza** | `root -l pureza.cc` |
+| a pureza sem reagrupar | `root -l 'pureza.cc(1)'` |
 | as 4 sobrepostas (com teto) | `root -l abre_todos.cc` |
 | as 4 sobrepostas (sem teto) | `root -l 'abre_todos.cc(kTRUE, kFALSE)'` |
 | o teste de consistência | `root -l compara_pthat.cc` |
@@ -208,6 +297,7 @@ inclusiva de pThat > 4, e a soma em ocorrências reproduz uma rodada inclusiva d
 |---|---|
 | `jatos_foton_v2.cc` | o RUÍDO — `HardQCD:all`, classifica origem, isola |
 | `foton_direto.cc` | o SINAL — `PromptPhoton:all`, fótons do processo duro |
+| `producao_direto.sh` | roda o sinal nas 4 faixas de pThat |
 | `producao.sh` | roda as 4 faixas em paralelo (`./producao.sh` para os dois conjuntos) |
 | `jatos_foton.cc` | versão v1, parte do jato (mantida para referência) |
 
@@ -215,7 +305,8 @@ inclusiva de pThat > 4, e a soma em ocorrências reproduz uma rodada inclusiva d
 
 | arquivo | o que faz |
 |---|---|
-| `soma_pthat.cc` | soma as 4 faixas com teto, pesadas por σ/N (64 histogramas) |
+| `soma_pthat.cc` | soma as 4 faixas com teto, pesadas por σ/N (68 histogramas) |
+| `pureza.cc` | S/(S+B) em pT, sinal e ruído nas mesmas faixas |
 | `ve_faixas.cc` | as 4 faixas sobrepostas, com a soma em magenta |
 | `abre_todos.cc` | as 4 sobrepostas, 42 histogramas, sem somar |
 | `compara_pthat.cc` | teste de consistência das faixas encaixadas |
@@ -228,7 +319,9 @@ inclusiva de pThat > 4, e a soma em ocorrências reproduz uma rodada inclusiva d
 |---|---|
 | `jatos_foton_pthat04_07/07_10/10_15/15_inf.root` | as 4 faixas com teto, 100 mil cada |
 | `jatos_foton_pthat04/07/10/15.root` | as 4 sem teto, 100 mil cada |
-| `soma_pthat.root` | a soma, 64 histogramas |
+| `soma_pthat.root` | a soma, 68 histogramas |
+| `foton_direto_pthat04_07/07_10/10_15/15_inf.root` | o sinal nas 4 faixas |
+| `pureza.root` | espectros de S e B e a curva de pureza |
 | `foton_direto_pthat05.root` | o sinal, 100 mil eventos de pThat > 5 |
 | `jatos_foton_isolado.root` | 1 milhão de eventos, pThat > 4 |
 | `jatos_foton.root` | 1 milhão, código v1 |
@@ -268,6 +361,10 @@ root -l -b -q soma_pthat.cc
 # o sinal
 root -l -b -q 'foton_direto.cc(5., -1., 43, 5000, "teste")'   # teste, ~50 s
 root -l -b -q 'foton_direto.cc(5., -1., 43, 100000, "")'      # ~16 min
+./producao_direto.sh 100000   # o sinal nas 4 faixas (~13 min)
+
+# a pureza, depois dos dois
+root -l -b -q pureza.cc
 ```
 
 Precisa de ROOT com `TPythia8` e do FastJet no `ROOT_INCLUDE_PATH`.

@@ -59,6 +59,7 @@
 #include "TFile.h"
 #include "TH1F.h"
 #include "TH2F.h"
+#include "TLegend.h"
 #include "TMath.h"
 
 #include "fastjet/PseudoJet.hh"
@@ -68,6 +69,9 @@
 #include <set>
 
 const Int_t NFAIXAS = 6;
+
+// Massa do pi0, PDG 2024. Serve de alvo na marcacao por massa invariante.
+const Double_t M_PI0 = 0.1349768;   // GeV
 const Int_t NORIGENS = 3;   // 0 = pi0, 1 = outro hadron, 2 = fragmentacao
 
 // Ponteiros em escopo de arquivo: continuam acessiveis no prompt do ROOT
@@ -86,6 +90,12 @@ TH1F   *hist_soma_cone   = 0;   // soma de pT no cone, dos fotons energeticos
 TH1F   *hist_pt_iso_pi0   = 0;
 TH1F   *hist_pt_iso_frag  = 0;
 TH1F   *hist_pt_iso_outro = 0;
+
+// MASSA INVARIANTE dos pares de fotons. Serve para marcar e descartar o
+// foton energetico que, na verdade, e' filho de um pi0 cujo irmao ficou
+// mole demais para ser notado.
+TH1F   *hist_massa_gg        = 0;   // todos os pares, todos os energeticos
+TH1F   *hist_massa_melhor[NORIGENS];// o par mais proximo do pi0, so' isolados
 
 // Informacao da rodada: secao de choque, numero de eventos e peso.
 // TH1D (nao TH1F) porque sigma em mb precisa de precisao dupla.
@@ -112,6 +122,7 @@ TCanvas *c9  = 0;
 TCanvas *c10 = 0;
 TCanvas *c11 = 0;
 TCanvas *c12 = 0;
+TCanvas *c13 = 0;   // massa invariante
 
 Bool_t eh_neutrino(Int_t pdg) // devolve true se o PDG for de neutrino
 {
@@ -156,6 +167,33 @@ Double_t soma_cone(TClonesArray *lista, Int_t i_foton,
     soma_pt_cone += p->Pt();
   }
   return soma_pt_cone;
+}
+
+// Massa invariante de um par de fotons.
+//
+//   m^2 = (E1 + E2)^2 - |p1 + p2|^2
+//
+// Para dois fotons, que nao tem massa, isso se reduz a
+//   m^2 = 2 E1 E2 (1 - cos(theta))
+// com theta o angulo entre eles. Ou seja: a massa do par e' grande quando
+// os dois sao energeticos E abrem bastante. Um pi0 muito energetico decai
+// em dois fotons quase colineares, e esses pares de theta pequeno sao
+// justamente os dificeis de separar num calorimetro real.
+//
+// A conta e' feita somando os quadrivetores, que e' menos sujeita a erro
+// do que a formula do angulo.
+Double_t massa_par(TParticle *a, TParticle *b)
+{
+  Double_t E  = a->Energy() + b->Energy();
+  Double_t px = a->Px()     + b->Px();
+  Double_t py = a->Py()     + b->Py();
+  Double_t pz = a->Pz()     + b->Pz();
+
+  Double_t m2 = E*E - px*px - py*py - pz*pz;
+
+  // m2 pode dar levemente negativo por arredondamento quando os dois
+  // fotons sao quase colineares. Nesse caso a massa e' zero, nao NaN.
+  return (m2 > 0) ? TMath::Sqrt(m2) : 0.;
 }
 
 // Devolve em qual faixa um valor de pT cai (-1 se estiver fora de todas)
@@ -242,6 +280,21 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   Double_t R_iso        = 0.4;     // raio do cone de isolamento
   Double_t pt_iso_max   = 2.0;     // GeV/c: isolado se a soma no cone for menor
   Double_t pt_foton_min = 5.0;     // GeV/c: define "foton energetico"
+
+  // ---- marcacao por massa invariante (parametros NOVOS, nenhum corte
+  // ---- antigo foi tocado)
+  //
+  // pt_parceiro_min e' o que mais importa aqui, e merece atencao.
+  // O Pythia entrega TODOS os fotons, inclusive os de 1 MeV. Um
+  // calorimetro real nao: abaixo de alguns centesimos de GeV o deposito
+  // some no ruido. Se deixassemos o parceiro ser arbitrariamente mole,
+  // acharíamos o irmao de QUALQUER pi0 e concluiriamos que a contaminacao
+  // e' toda removivel -- o que e' falso, e seria falso justamente pelo
+  // motivo que da' origem ao problema: o fundo irredutivel existe PORQUE
+  // o irmao e' mole demais para ser visto.
+  // 0,5 GeV/c e' a ordem de grandeza de um limiar de cluster tipico.
+  Double_t pt_parceiro_min = 0.5;  // GeV/c: limiar para "ver" o parceiro
+  Double_t janela_pi0      = 0.02; // GeV: meia-largura da janela do pi0
 
   // seis faixas; a ultima vai ate 1000, ou seja, "acima de 20 GeV"
   Double_t faixa_lo[NFAIXAS] = { 5.,  8., 10., 12., 16.,   20.};
@@ -354,6 +407,22 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
       "#gamma isolado de outro hadron;p_{T}^{#gamma} [GeV/c];#gamma",
       35, 5., 40.);
 
+  // ---- massa invariante dos pares de fotons.
+  // 500 bins de 0 a 1 GeV, 2 MeV por bin. A largura foi escolhida para que
+  // a massa do pi0 (0,1349768) caia no CENTRO de um bin, [0,134 ; 0,136]:
+  // com 5 MeV ela caia bem na borda e o pico aparecia deslocado para
+  // 0,1325, o que confunde na hora de ler o grafico. O alcance ate' 1 GeV
+  // mostra tambem o eta em 0,548.
+  hist_massa_gg = new TH1F("hist_massa_gg",
+      "massa invariante de pares de #gamma;m_{#gamma#gamma} [GeV/c^{2}];pares", 500, 0., 1.);
+
+  for (Int_t o = 0; o < NORIGENS; o++)
+  {
+    sprintf(nome, "hist_massa_melhor_%s", curto_origem[o]);
+    sprintf(titulo, "melhor par de %s (#gamma ISOLADO);m_{#gamma#gamma} [GeV/c^{2}];#gamma", nome_origem[o]);
+    hist_massa_melhor[o] = new TH1F(nome, titulo, 500, 0., 1.);
+  }
+
   // ---- histogramas fatiados por faixa.
   // Nome e titulo sao montados com sprintf porque mudam de faixa para faixa.
   // A ultima faixa recebe o rotulo "> 20" em vez de "20 - 1000".
@@ -419,6 +488,10 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
     n_iso_zalto[o] = 0;
     for (Int_t f = 0; f < NFAIXAS; f++) { n_en[o][f] = 0; n_en_iso[o][f] = 0; }
   }
+
+  // marcacao por massa: isolados que tem um parceiro na janela do pi0
+  Long64_t n_marcado[NORIGENS] = {0, 0, 0};
+  Long64_t n_iso_tot[NORIGENS] = {0, 0, 0};   // isolados, para a fracao
 
   Long64_t n_sem_jato   = 0;   // foton energetico que nao caiu em jato nenhum
   Long64_t n_sem_origem = 0;   // nem pi0, nem hadron, nem quark na ancestralidade
@@ -633,6 +706,49 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
         else if (origem == 2) hist_pt_iso_frag ->Fill(pt_foton);
       }
 
+      // ---- MASSA INVARIANTE: procura o parceiro.
+      // Para cada foton energetico, combina com TODO outro foton final do
+      // evento que um calorimetro conseguiria ver (dentro da aceitacao e
+      // acima do limiar) e calcula a massa do par. Se algum par cair na
+      // massa do pi0, este foton e' filho de pi0 e deveria ser descartado.
+      //
+      // Guarda o par MAIS PROXIMO da massa do pi0, que e' o que um
+      // algoritmo de marcacao de verdade usaria para decidir.
+      Double_t massa_melhor = -1;
+      Double_t dist_melhor  = 1e9;
+
+      for (Int_t jp = 0; jp < np; jp++)
+      {
+        if (jp == ip) continue;                        // o proprio foton
+
+        TParticle *parceiro = (TParticle*) particulas->At(jp);
+
+        if (parceiro->GetStatusCode() <= 0) continue;  // so' estado final
+        if (parceiro->GetPdgCode() != 22)   continue;  // so' fotons
+        if (parceiro->Pt() < pt_parceiro_min) continue;
+        if (TMath::Abs(parceiro->Eta()) > eta_part_max) continue;
+
+        Double_t m = massa_par(foton, parceiro);
+
+        hist_massa_gg->Fill(m);
+
+        Double_t dist = TMath::Abs(m - M_PI0);
+        if (dist < dist_melhor) { dist_melhor = dist; massa_melhor = m; }
+      }
+
+      // So' os ISOLADOS entram na estatistica de marcacao: sao eles que
+      // sobrevivem ao isolamento e contaminam a amostra de sinal.
+      if (isolado)
+      {
+        n_iso_tot[origem]++;
+
+        if (massa_melhor >= 0)
+        {
+          hist_massa_melhor[origem]->Fill(massa_melhor);
+          if (dist_melhor < janela_pi0) n_marcado[origem]++;
+        }
+      }
+
       // ---- jato associado: aquele que CONTEM este foton.
       // Sem o corte de rapidez do jato: o corte de eta ja' foi aplicado
       // no proprio foton, logo acima.
@@ -772,6 +888,66 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   c12->Update();
   sprintf(png, "v2_%s_z_naoiso_frag.png", rodada);  c12->SaveAs(png);
 
+  // ---- c13: MASSA INVARIANTE
+  // Painel 1: todos os pares, alcance inteiro -- aparecem o pi0 e o eta.
+  // Painel 2: o mesmo com zoom no pi0.
+  // Painel 3: o melhor par de cada foton ISOLADO, separado por origem.
+  //           E' o painel que mostra se a marcacao funciona: os de pi0
+  //           tem que empilhar em 0,135 e os de fragmentacao nao.
+  c13 = new TCanvas("c13", "Massa invariante dos pares de fotons", 1500, 500);
+  c13->Divide(3, 1);
+
+  c13->cd(1);
+  gPad->SetLogy();
+  gPad->SetLeftMargin(0.16);
+  hist_massa_gg->SetLineColor(kBlack);
+  hist_massa_gg->SetLineWidth(2);
+  hist_massa_gg->Draw("HIST E");
+
+  // O zoom e' uma COPIA: mexer no eixo do original mudaria o painel 1
+  // e o que vai para o .root.
+  c13->cd(2);
+  gPad->SetLeftMargin(0.16);
+  TH1F *zoom = (TH1F*) hist_massa_gg->Clone("hist_massa_gg_zoom");
+  zoom->SetDirectory(0);
+  zoom->SetTitle("zoom no #pi^{0}");
+  zoom->GetXaxis()->SetRangeUser(0., 0.3);
+  zoom->SetLineColor(kBlue);
+  zoom->SetLineWidth(2);
+  zoom->Draw("HIST E");
+
+  c13->cd(3);
+  gPad->SetLogy();
+  gPad->SetLeftMargin(0.16);
+  {
+    Int_t cor_m[NORIGENS] = {kBlue, kGreen + 2, kRed};
+    Double_t topo_m = 0;
+    for (Int_t o = 0; o < NORIGENS; o++)
+      if (hist_massa_melhor[o]->GetMaximum() > topo_m)
+        topo_m = hist_massa_melhor[o]->GetMaximum();
+
+    TLegend *leg_m = new TLegend(0.45, 0.70, 0.89, 0.89);
+    leg_m->SetTextSize(0.035);
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      hist_massa_melhor[o]->SetTitle("melhor par, #gamma ISOLADO");
+      hist_massa_melhor[o]->SetStats(0);
+      hist_massa_melhor[o]->SetLineColor(cor_m[o]);
+      hist_massa_melhor[o]->SetLineWidth(2);
+      hist_massa_melhor[o]->SetMaximum(topo_m * 2.);
+      hist_massa_melhor[o]->GetXaxis()->SetRangeUser(0., 0.5);
+      hist_massa_melhor[o]->Draw(o == 0 ? "HIST E" : "HIST E SAME");
+
+      sprintf(titulo, "%s  (%.0f)", curto_origem[o],
+              hist_massa_melhor[o]->GetEntries());
+      leg_m->AddEntry(hist_massa_melhor[o], titulo, "l");
+    }
+    leg_m->Draw();
+  }
+  c13->Update();
+  sprintf(png, "v2_%s_massa_invariante.png", rodada);  c13->SaveAs(png);
+
   // ================================================================
   //  RESUMO -- vem ANTES do Write(), porque le os histogramas
   // ================================================================
@@ -885,9 +1061,50 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   printf("    %-14s %7lld\n", "total",
          n_iso_zalto[0] + n_iso_zalto[1] + n_iso_zalto[2]);
 
-  // ---- (e) fotons que nao cairam em jato nenhum
+  // ---- (e) MARCACAO POR MASSA INVARIANTE
   printf("--------------------------------------------------\n");
-  printf("  (e) fotons energeticos sem jato : %lld\n", n_sem_jato);
+  printf("  (e) MARCACAO POR MASSA INVARIANTE (#pi^{0}-tagging)\n");
+  printf("      Um #gamma ISOLADO e' marcado se existir outro #gamma no\n");
+  printf("      evento, com pT > %.2f GeV/c e |eta| < %.1f, tal que o par\n",
+         pt_parceiro_min, eta_part_max);
+  printf("      tenha massa a menos de %.0f MeV da massa do pi0.\n",
+         janela_pi0 * 1000.);
+  printf("  %-14s %9s %9s %10s\n", "origem", "isolados", "marcados", "marcados %");
+
+  for (Int_t o = 0; o < NORIGENS; o++)
+    printf("  %-14s %9lld %9lld %9.2f%%\n", curto_origem[o],
+           n_iso_tot[o], n_marcado[o],
+           n_iso_tot[o] ? 100. * n_marcado[o] / n_iso_tot[o] : 0.);
+
+  // O que sobra depois de jogar fora os marcados. E' a conta que interessa:
+  // a marcacao so' vale a pena se tirar mais fundo do que sinal.
+  {
+    Long64_t sobra[NORIGENS];
+    Long64_t antes = 0, depois = 0;
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      sobra[o] = n_iso_tot[o] - n_marcado[o];
+      antes  += n_iso_tot[o];
+      depois += sobra[o];
+    }
+
+    printf("      ------------------------------------------\n");
+    printf("      amostra isolada ANTES da marcacao : %lld\n", antes);
+    printf("      amostra isolada DEPOIS            : %lld\n", depois);
+
+    // "fragmentacao" e' indice 2; pi0 e outro hadron sao decaimento
+    Double_t f_antes  = antes  ? 100. * n_iso_tot[2] / antes  : 0.;
+    Double_t f_depois = depois ? 100. * sobra[2]     / depois : 0.;
+
+    printf("      fracao de fragmentacao ANTES      : %6.2f%%\n", f_antes);
+    printf("      fracao de fragmentacao DEPOIS     : %6.2f%%\n", f_depois);
+    printf("      (nesta amostra nao ha' foton direto: HardQCD:all so'\n");
+    printf("       produz decaimento e fragmentacao.)\n");
+  }
+
+  // ---- (f) fotons que nao cairam em jato nenhum
+  printf("--------------------------------------------------\n");
+  printf("  (f) fotons energeticos sem jato : %lld\n", n_sem_jato);
   printf("      origem nao classificada     : %lld\n", n_sem_origem);
   printf("==================================================\n");
 
