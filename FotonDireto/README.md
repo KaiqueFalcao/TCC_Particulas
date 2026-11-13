@@ -1,26 +1,58 @@
 # TCC — Fótons diretos e fragmentação do píon neutro
 
-Estudo de Monte Carlo em colisões próton-próton para a reconstrução de jatos e
-a medida da função de fragmentação do π⁰, como etapa preparatória para uma
-análise de **fótons diretos**.
+Estudo de Monte Carlo em colisões próton-próton a 14 TeV que mede a
+**contaminação na identificação de fótons isolados**: de tudo que passa num
+corte de isolamento, que fração é fóton direto e que fração é fundo?
 
-O fundo dominante para fótons diretos vem do decaimento π⁰ → γγ. Este
-repositório constrói as ferramentas para quantificar esse fundo.
+O fundo dominante vem do decaimento π⁰ → γγ. O trabalho gera as duas amostras
+separadamente — `PromptPhoton:all` para o sinal, `HardQCD:all` para o fundo —
+e as compara em seção de choque.
+
+**Resposta:** a pureza é **4,76 %**, ou **24,22 %** se a fragmentação contar
+como sinal. A contaminação é de 95,24 %.
 
 ---
 
 ## Etapa atual: [`jatos_foton/`](jatos_foton/)
 
-A análise mais recente mudou o ponto de vista — parte do **fóton**, não do
-jato — e mede quanto a técnica de isolamento limpa a amostra.
+A análise parte do **fóton**, não do jato. São dois códigos irmãos com os
+mesmos cortes: `jatos_foton_v2.cc` (`HardQCD:all`) gera o fundo e
+`foton_direto.cc` (`PromptPhoton:all`) gera o sinal.
 
-**Resultado:** o isolamento guarda **71,6 %** dos fótons de fragmentação contra
-apenas **8,5 %** dos de decaimento. A pureza do sinal sobe de 2,44 % para
-17,41 %, um ganho de **7,1×**.
+### Três resultados
+
+**1. O isolamento funciona, e ordena as origens como deveria.**
+
+| origem | fração isolada |
+|---|---|
+| fóton direto (sinal) | **87,2 %** |
+| fragmentação | 71,6 % |
+| π⁰ | 8,5 % |
+| outro hádron | 8,5 % |
+
+**2. A massa invariante marca parte do fundo — mas só parte.**
+
+Pareando cada fóton energético com os outros fótons do evento, o espectro
+reproduz o PDG na terceira casa: π⁰ em 0,1350 (PDG 0,13498) e η em 0,5470
+(PDG 0,54786). A marcação remove 41,2 % dos fótons de π⁰ sem custar **nenhum**
+fóton de fragmentação.
+
+Mas **57,8 % dos fótons de π⁰ não têm parceiro visível nenhum**. Esses são o
+fundo irredutível, e existem exatamente pelo motivo descrito mais abaixo: a
+assimetria do decaimento é plana.
+
+**3. A pureza é baixa.** 4,76 % na convenção em que só o fóton direto é sinal;
+24,22 % contando a fragmentação junto.
 
 A produção é fatiada em faixas de pThat e somada com peso σ/N, o que mede a
-mesma física com 30× mais precisão pelo mesmo custo de CPU. Todos os `.root`
-estão versionados: dá para abrir os resultados sem rodar nada.
+mesma física com 30× mais precisão pelo mesmo custo de CPU. Sinal e fundo usam
+as **mesmas** faixas — comparar faixas diferentes estragaria a pureza em pT
+baixo. Todos os `.root` estão versionados: dá para abrir os resultados sem
+rodar nada.
+
+**Limite conhecido:** o fundo tem só 116 eventos de Monte Carlo no espectro
+inteiro. O valor integrado é confiável; a curva bin a bin acima de ~15 GeV/c
+não é.
 
 Documentação completa em [`jatos_foton/README.md`](jatos_foton/README.md).
 
@@ -171,11 +203,27 @@ pelo `.gitignore`; copie para `figuras/` as versões que quiser versionar.
 
 ---
 
-## Próximas etapas
+## Etapas concluídas
 
-- [ ] Seção de choque do fóton líder (normalizar por `sigmaGen()`/`nAccepted()`)
-- [ ] Massa invariante combinatória de pares de fótons (picos do π⁰ e do η)
-- [ ] π⁰-tagging: remover fótons que formam massa de π⁰ com algum parceiro
-- [ ] Corte de isolamento (ΣpT num cone ΔR < 0,4)
-- [ ] Classificação por verdade do MC: direto / fragmentação / decaimento
-- [ ] Pureza e eficiência vs. pT; teste de fechamento
+- [x] Seção de choque normalizada por `sigmaGen()`/`nAccepted()` — o peso σ/N
+      de cada rodada fica no bin 5 do `hist_sigma`, dentro do próprio `.root`
+- [x] Massa invariante combinatória de pares de fótons — picos do π⁰ e do η
+      reproduzidos na terceira casa
+- [x] π⁰-tagging — remove 41,2 % dos fótons de π⁰ sem custar fragmentação;
+      57,8 % ficam sem parceiro visível e são irredutíveis
+- [x] Corte de isolamento (ΣpT < 2 GeV/c num cone ΔR < 0,4)
+- [x] Classificação por verdade do MC: direto / fragmentação / decaimento /
+      outro hádron, subindo pelas cópias do chuveiro
+- [x] Pureza vs. pT, sinal e fundo nas mesmas faixas de pThat
+
+## O que falta
+
+- [ ] **Mais estatística de `HardQCD`.** O fundo tem 116 eventos de MC contra
+      27 485 do sinal. Para a curva de pureza valer acima de 15 GeV/c seriam
+      precisos uns 10× mais eventos, cerca de 4 h de CPU.
+- [ ] Eficiência do corte de isolamento **em função do pT** (hoje só o valor
+      integrado por origem)
+- [ ] Teste de fechamento formal da soma fatiada (hoje há a conferência das σ:
+      141,577 mb somados contra 140,818 mb da rodada inclusiva, 0,54 %)
+- [ ] Incerteza sistemática do limiar de 0,5 GeV/c no parceiro, que é o
+      parâmetro que manda na eficiência da marcação por massa

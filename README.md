@@ -11,18 +11,36 @@ antiga.
 
 ## [`FotonDireto/`](FotonDireto/) — projeto atual
 
-Reconstrução de jatos e medida da função de fragmentação do π⁰, como etapa
-preparatória para uma análise de **fótons diretos**. Inclui o cálculo da
-assimetria do decaimento π⁰ → γγ, que é a origem do fundo irredutível dessa
-análise.
+Mede a **contaminação na identificação de fótons isolados**: de tudo que passa
+num corte de isolamento, que fração é fóton direto e que fração é fundo de
+decaimento de hádrons?
 
-Documentação detalhada em [`FotonDireto/README.md`](FotonDireto/README.md).
+**Resposta: a pureza é 4,76 %** (24,22 % se a fragmentação contar como sinal).
 
-A etapa mais recente está em
-[`FotonDireto/jatos_foton/`](FotonDireto/jatos_foton/): análise centrada no
-**fóton**, com classificação de origem, corte de isolamento e produção fatiada
-em faixas de pThat somadas por seção de choque. Os `.root` da produção estão
-versionados, então os resultados abrem sem precisar simular de novo.
+Sinal e fundo são gerados como duas amostras separadas e comparados em
+seção de choque:
+
+| | processo | papel |
+|---|---|---|
+| `foton_direto.cc` | `PromptPhoton:all` | sinal — fótons do processo duro |
+| `jatos_foton_v2.cc` | `HardQCD:all` | fundo — π⁰, outro hádron, fragmentação |
+
+O trabalho inclui o corte de isolamento (ΣpT < 2 GeV/c em ΔR < 0,4), a
+classificação de origem por verdade do MC, a marcação por massa invariante de
+pares de fótons (picos do π⁰ e do η reproduzidos na terceira casa) e a curva
+de pureza em pT.
+
+A produção é fatiada em faixas de pThat e somada com peso σ/N. Os `.root`
+estão versionados, então os resultados abrem sem precisar simular de novo.
+
+Documentação detalhada em [`FotonDireto/README.md`](FotonDireto/README.md) e,
+para a etapa atual, em
+[`FotonDireto/jatos_foton/README.md`](FotonDireto/jatos_foton/README.md).
+
+### Etapas anteriores, na raiz de `FotonDireto/`
+
+Função de fragmentação do π⁰ e assimetria do decaimento π⁰ → γγ, que é a
+origem do fundo irredutível medido acima.
 
 | Arquivo | O que faz |
 |---|---|
@@ -101,5 +119,9 @@ dentro de macros ROOT sem `gSystem->Load()`.
 - Cada pasta tem suas figuras em `figuras/`.
 - Macros ROOT rodam com `root -l arquivo.cc`; programas com `main()` são
   compilados com `g++`.
-- Binários, arquivos `.root` e figuras geradas fora de `figuras/` não são
-  versionados (ver `.gitignore`).
+- Binários e figuras geradas fora de `figuras/` não são versionados.
+- Arquivos `.root` são ignorados por padrão, **com exceção** dos resultados de
+  produção em `FotonDireto/jatos_foton/`, que são versionados de propósito
+  para abrir em outra máquina sem repetir rodadas de 15 min a 1 h cada. As
+  exceções estão listadas uma por linha no `.gitignore` daquela pasta — o git
+  não aceita comentário no fim de uma linha de padrão.
