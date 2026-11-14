@@ -23,7 +23,7 @@
 #include "TROOT.h"
 
 const Int_t NFAIXAS  = 6;
-const Int_t NORIGENS = 3;   // 0 = pi0, 1 = outro hadron, 2 = fragmentacao
+const Int_t NORIGENS = 3;   // 0 = pi0 + eta, 1 = outro hadron, 2 = fragmentacao
 
 TFile *arquivo = 0;
 
@@ -71,7 +71,7 @@ void abre_jatos_foton_v2(const char *nome_arq = "jatos_foton_isolado.root")
   hist_eta_phi    = (TH2F*) arquivo->Get("hist_eta_phi");
 
   // ---- os que vem em seis faixas
-  const char *curto_origem[NORIGENS] = {"pi0", "outro", "frag"};
+  const char *curto_origem[NORIGENS] = {"pi0eta", "outro", "frag"};
   char n[100];
 
   for (Int_t f = 0; f < NFAIXAS; f++)

@@ -22,6 +22,24 @@
 // calcular z = pT_foton / pT_jato, e aqui nao medimos z.
 //
 // ----------------------------------------------------------------------------
+//  A MARCACAO POR MASSA INVARIANTE TAMBEM E' APLICADA AQUI
+// ----------------------------------------------------------------------------
+// A marcacao existe para retirar foton de DECAIMENTO: se o foton energetico
+// formar, com algum parceiro visivel, um par de massa igual a do pi0 ou a do
+// eta, ele e' filho desse hadron e vai fora.
+//
+// Na amostra de sinal nao ha' decaimento para retirar -- a verdade da
+// simulacao ja' garante que todo foton selecionado aqui saiu do processo
+// duro. Entao tudo que a marcacao marcar neste codigo foi marcado POR ACASO:
+// um foton direto que, junto com um foton qualquer do evento, caiu numa das
+// janelas de massa sem ter nada a ver com ela.
+//
+// Rodar a marcacao nas duas amostras com os MESMOS criterios e' o que permite
+// MEDIR esse acaso em vez de supor que ele e' pequeno. A fracao marcada aqui
+// e' a perda de sinal do corte; a fracao marcada no ruido e' o ganho. A
+// pureza pos-marcacao usa as duas.
+//
+// ----------------------------------------------------------------------------
 //  COMO SE RECONHECE UM FOTON DIRETO
 // ----------------------------------------------------------------------------
 // No Pythia 6 as linhas 7 e 8 do registro eram as duas particulas que SAEM do
@@ -62,7 +80,10 @@
 //     root -l -b -q 'foton_direto.cc(15., -1., 46, 100000, "pthat15_inf")'
 //   pt_hat_max = -1 quer dizer "sem teto".
 //
-// Saida: foton_direto_<sufixo>.root  e  foton_direto_<sufixo>.png
+// Saida: foton_direto_<sufixo>.root  e  tres PNGs:
+//   foton_direto_<sufixo>.png            espectro de pT, antes e depois
+//   foton_direto_<sufixo>_massa.png      massa invariante dos pares
+//   foton_direto_<sufixo>_eiso.png       soma de pT no cone (E_iso)
 
 #include "TSystem.h"
 #include "TClonesArray.h"
@@ -72,6 +93,8 @@
 #include "TFile.h"
 #include "TH1F.h"
 #include "TH1D.h"
+#include "TLegend.h"
+#include "TLine.h"
 #include "TMath.h"
 #include "TROOT.h"
 
@@ -81,12 +104,25 @@
 const Int_t I_DURO_A = 4;
 const Int_t I_DURO_B = 5;
 
+// Massas do pi0 e do eta, PDG 2024. As mesmas do jatos_foton_v2.cc: os dois
+// codigos tem que marcar com o mesmo criterio, senao sinal e ruido estariam
+// medidos com reguas diferentes.
+const Double_t M_PI0 = 0.1349768;   // GeV
+const Double_t M_ETA = 0.547862;    // GeV
+
 // Ponteiros em escopo de arquivo: continuam acessiveis no prompt do ROOT
 // depois que a macro termina.
 TH1F *hist_pt_direto_iso = 0;   // bruto, em CONTAGEM
+TH1F *hist_pt_direto_pos = 0;   // o mesmo, DEPOIS da marcacao por massa
 TH1F *hist_pt_direto_mb  = 0;   // a copia multiplicada pelo peso, em mb
+TH1F *hist_eiso_direto   = 0;   // soma de pT no cone, todo #gamma direto
+TH1F *hist_massa_gg      = 0;   // todos os pares de fotons
+TH1F *hist_massa_melhor     = 0;   // par mais proximo do pi0, #gamma isolado
+TH1F *hist_massa_melhor_eta = 0;   // par mais proximo do eta, #gamma isolado
 TH1D *hist_sigma         = 0;   // informacao da rodada
 TCanvas *c1 = 0;
+TCanvas *c2 = 0;   // massa invariante
+TCanvas *c3 = 0;   // E_iso
 
 Bool_t eh_neutrino(Int_t pdg) // devolve true se o PDG for de neutrino
 {
@@ -131,6 +167,28 @@ Double_t soma_cone(TClonesArray *lista, Int_t i_foton,
     soma_pt_cone += p->Pt();
   }
   return soma_pt_cone;
+}
+
+// Massa invariante de um par de fotons. IDENTICA a do jatos_foton_v2.cc.
+//
+//   m^2 = (E1 + E2)^2 - |p1 + p2|^2
+//
+// Para dois fotons, que nao tem massa, isso se reduz a
+//   m^2 = 2 E1 E2 (1 - cos(theta))
+// com theta o angulo entre eles. A conta e' feita somando os quadrivetores,
+// que e' menos sujeita a erro do que a formula do angulo.
+Double_t massa_par(TParticle *a, TParticle *b)
+{
+  Double_t E  = a->Energy() + b->Energy();
+  Double_t px = a->Px()     + b->Px();
+  Double_t py = a->Py()     + b->Py();
+  Double_t pz = a->Pz()     + b->Pz();
+
+  Double_t m2 = E*E - px*px - py*py - pz*pz;
+
+  // m2 pode dar levemente negativo por arredondamento quando os dois fotons
+  // sao quase colineares. Nesse caso a massa e' zero, nao NaN.
+  return (m2 > 0) ? TMath::Sqrt(m2) : 0.;
 }
 
 // Sobe pelas COPIAS do proprio foton e devolve o indice do foton mais antigo
@@ -217,11 +275,23 @@ void foton_direto(Double_t pt_hat_min = 5.,
   Double_t pt_iso_max   = 2.0;     // GeV/c: isolado se a soma no cone for menor
   Double_t pt_foton_min = 5.0;     // GeV/c: define "foton energetico"
 
+  // ---- marcacao por massa invariante: OS MESMOS parametros do
+  // ---- jatos_foton_v2.cc, para a regua ser a mesma nas duas amostras.
+  Double_t pt_parceiro_min = 0.5;  // GeV/c: limiar para "ver" o parceiro
+  Double_t janela_pi0      = 0.02; // GeV: meia-largura da janela do pi0
+  Double_t janela_eta      = 0.02; // GeV: meia-largura da janela do eta
+
+  // ---- E_iso: binning igual ao do jatos_foton_v2.cc. 0 a 20 GeV/c em 100
+  // bins (0,2 GeV por bin), de modo que o corte de 2,0 GeV/c caia numa
+  // BORDA de bin e a integral abaixo dele seja exatamente o que e' aceito.
+  Double_t eiso_max   = 20.;
+  Int_t    eiso_nbins = 100;
+
   // quantos eventos imprimem o diagnostico. Troque por 0 para desligar.
   Int_t n_ev_diag = 3;
 
   // ---- buffers para montar textos
-  char comando[200], nome_arquivo[200], png[200], rodada[60];
+  char comando[200], nome_arquivo[200], png[200], rodada[60], titulo[250];
 
   if (sufixo[0] != '\0') sprintf(rodada, "%s", sufixo);
   else                    sprintf(rodada, "pthat%02.0f", pt_hat_min);
@@ -274,10 +344,43 @@ void foton_direto(Double_t pt_hat_min = 5.,
       "#gamma DIRETO isolado;p_{T}^{#gamma} [GeV/c];#gamma",
       35, 5., 40.);
 
+  // ---- o mesmo espectro DEPOIS da marcacao por massa invariante: so' os
+  // que NAO foram marcados. A razao entre os dois e' a eficiencia da
+  // marcacao para o sinal, que antes era suposta igual a 1 e agora e' medida.
+  hist_pt_direto_pos = new TH1F("hist_pt_direto_pos",
+      "#gamma DIRETO isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma",
+      35, 5., 40.);
+
+  // ---- E_iso: soma de pT no cone, para TODO foton direto energetico
+  // (isolado ou nao). Mesmo binning dos hist_eiso_* do jatos_foton_v2.cc,
+  // para as quatro curvas irem ao mesmo grafico na pureza.cc.
+  sprintf(titulo, "E_{iso} do #gamma direto;#Sigma pT^{cone} (R < %.1f) [GeV/c];#gamma", R_iso);
+  hist_eiso_direto = new TH1F("hist_eiso_direto", titulo, eiso_nbins, 0., eiso_max);
+
+  // ---- massa invariante dos pares. 500 bins de 0 a 1 GeV, 2 MeV por bin:
+  // a largura foi escolhida para que 0,1349768 (pi0) e 0,547862 (eta) caiam
+  // no CENTRO de um bin, e os picos aparecam no lugar certo.
+  hist_massa_gg = new TH1F("hist_massa_gg",
+      "massa invariante de pares de #gamma;m_{#gamma#gamma} [GeV/c^{2}];pares",
+      500, 0., 1.);
+  hist_massa_melhor = new TH1F("hist_massa_melhor",
+      "melhor par (#pi^{0}), #gamma direto ISOLADO;m_{#gamma#gamma} [GeV/c^{2}];#gamma",
+      500, 0., 1.);
+  hist_massa_melhor_eta = new TH1F("hist_massa_melhor_eta",
+      "melhor par (#eta), #gamma direto ISOLADO;m_{#gamma#gamma} [GeV/c^{2}];#gamma",
+      500, 0., 1.);
+
   // ---- contadores
   Long64_t n_energ      = 0;   // fotons finais energeticos na aceitacao
   Long64_t n_direto     = 0;   // desses, quantos sao diretos
   Long64_t n_direto_iso = 0;   // desses, quantos sao isolados
+
+  // marcacao por massa, nas duas janelas. Aqui tudo que e' marcado e' engano:
+  // na amostra de sinal nao existe foton de decaimento.
+  Long64_t n_marcado     = 0;  // pi0 OU eta
+  Long64_t n_marcado_pi0 = 0;
+  Long64_t n_marcado_eta = 0;
+  Long64_t n_com_parceiro = 0; // isolados que tem algum parceiro visivel
 
   // ---- laco de eventos
   for (Int_t iev = 0; iev < nev; iev++)
@@ -364,10 +467,66 @@ void foton_direto(Double_t pt_hat_min = 5.,
 
       // ---- isolamento, com a mesma funcao e o mesmo corte do v2
       Double_t soma_pt_cone = soma_cone(particulas, ip, R_iso, eta_part_max);
+
+      // E_iso entra SEMPRE, isolado ou nao: o grafico mostra a distribuicao
+      // inteira, e o corte aparece nele como uma linha vertical.
+      hist_eiso_direto->Fill(soma_pt_cone);
+
       if (soma_pt_cone >= pt_iso_max) continue;    // nao isolado
 
       n_direto_iso++;
       hist_pt_direto_iso->Fill(pt_foton);
+
+      // ---- MARCACAO POR MASSA INVARIANTE, com os mesmos criterios do
+      // jatos_foton_v2.cc: combina este foton com todo outro foton final
+      // que um calorimetro veria, e guarda o par mais proximo de cada uma
+      // das duas massas procuradas.
+      Double_t massa_pi0_melhor = -1,  dist_pi0_melhor = 1e9;
+      Double_t massa_eta_melhor = -1,  dist_eta_melhor = 1e9;
+
+      for (Int_t jp = 0; jp < np; jp++)
+      {
+        if (jp == ip) continue;                        // o proprio foton
+
+        TParticle *parceiro = (TParticle*) particulas->At(jp);
+
+        if (parceiro->GetStatusCode() <= 0) continue;  // so' estado final
+        if (parceiro->GetPdgCode() != 22)   continue;  // so' fotons
+        if (parceiro->Pt() < pt_parceiro_min) continue;
+        if (TMath::Abs(parceiro->Eta()) > eta_part_max) continue;
+
+        Double_t m = massa_par(foton, parceiro);
+
+        hist_massa_gg->Fill(m);
+
+        Double_t d_pi0 = TMath::Abs(m - M_PI0);
+        if (d_pi0 < dist_pi0_melhor)
+        { dist_pi0_melhor = d_pi0; massa_pi0_melhor = m; }
+
+        Double_t d_eta = TMath::Abs(m - M_ETA);
+        if (d_eta < dist_eta_melhor)
+        { dist_eta_melhor = d_eta; massa_eta_melhor = m; }
+      }
+
+      Bool_t marcado_pi0 = (massa_pi0_melhor >= 0 &&
+                            dist_pi0_melhor < janela_pi0);
+      Bool_t marcado_eta = (massa_eta_melhor >= 0 &&
+                            dist_eta_melhor < janela_eta);
+      Bool_t marcado     = (marcado_pi0 || marcado_eta);
+
+      if (massa_pi0_melhor >= 0)
+      {
+        n_com_parceiro++;
+        hist_massa_melhor    ->Fill(massa_pi0_melhor);
+        hist_massa_melhor_eta->Fill(massa_eta_melhor);
+      }
+
+      if (marcado_pi0) n_marcado_pi0++;
+      if (marcado_eta) n_marcado_eta++;
+      if (marcado)     n_marcado++;
+
+      // ---- o marcado e' REMOVIDO, igual ao que o ruido faz
+      if (!marcado) hist_pt_direto_pos->Fill(pt_foton);
     }
   }
 
@@ -407,13 +566,112 @@ void foton_direto(Double_t pt_hat_min = 5.,
   hist_pt_direto_mb->SetLineWidth(2);
   hist_pt_direto_mb->SetStats(0);
 
+  // A mesma copia escalada para o espectro DEPOIS da marcacao, para os dois
+  // aparecerem no mesmo grafico e dar para ver quanto sinal o corte custou.
+  TH1F *hist_pt_pos_mb = (TH1F*) hist_pt_direto_pos->Clone("hist_pt_pos_mb");
+  hist_pt_pos_mb->SetDirectory(0);
+  hist_pt_pos_mb->Scale(peso);
+  hist_pt_pos_mb->SetLineColor(kRed);
+  hist_pt_pos_mb->SetLineWidth(2);
+  hist_pt_pos_mb->SetLineStyle(2);
+  hist_pt_pos_mb->SetStats(0);
+
   c1 = new TCanvas("c1", "Fotons diretos isolados", 900, 700);
   gPad->SetLogy();
   gPad->SetLeftMargin(0.16);           // senao os expoentes saem cortados
   hist_pt_direto_mb->Draw("HIST E");
+  hist_pt_pos_mb   ->Draw("HIST E SAME");
+
+  TLegend *leg1 = new TLegend(0.45, 0.74, 0.89, 0.89);
+  leg1->SetTextSize(0.032);
+  leg1->AddEntry(hist_pt_direto_mb, "isolado", "l");
+  leg1->AddEntry(hist_pt_pos_mb,    "isolado e nao marcado", "l");
+  leg1->Draw();
+
   c1->Update();
   sprintf(png, "foton_direto_%s.png", rodada);
   c1->SaveAs(png);
+
+  // ---- c2: MASSA INVARIANTE dos pares de fotons desta amostra.
+  // Painel 1: todos os pares. Diferente do ruido, aqui NAO deve haver pico
+  //           em 0,135 nem em 0,548 vindo do foton energetico -- se houver,
+  //           e' de pi0 e eta do resto do evento, nao do foton selecionado.
+  // Painel 2: o melhor par de cada foton direto isolado, nas duas janelas.
+  //           E' o grafico que mede o acaso: as janelas estao marcadas.
+  c2 = new TCanvas("c2", "Massa invariante -- sinal", 1200, 500);
+  c2->Divide(2, 1);
+
+  c2->cd(1);
+  gPad->SetLogy();  gPad->SetLeftMargin(0.16);
+  hist_massa_gg->SetLineColor(kBlack);
+  hist_massa_gg->SetLineWidth(2);
+  hist_massa_gg->Draw("HIST E");
+
+  c2->cd(2);
+  gPad->SetLogy();  gPad->SetLeftMargin(0.16);
+  hist_massa_melhor->SetTitle("melhor par do #gamma direto isolado");
+  hist_massa_melhor->SetStats(0);
+  hist_massa_melhor->SetLineColor(kBlue);
+  hist_massa_melhor->SetLineWidth(2);
+  hist_massa_melhor->GetXaxis()->SetRangeUser(0., 0.7);
+  hist_massa_melhor->Draw("HIST E");
+
+  hist_massa_melhor_eta->SetStats(0);
+  hist_massa_melhor_eta->SetLineColor(kGreen + 2);
+  hist_massa_melhor_eta->SetLineWidth(2);
+  hist_massa_melhor_eta->Draw("HIST E SAME");
+
+  TLegend *leg2 = new TLegend(0.40, 0.74, 0.89, 0.89);
+  leg2->SetTextSize(0.032);
+  leg2->AddEntry(hist_massa_melhor,     "par mais proximo do #pi^{0}", "l");
+  leg2->AddEntry(hist_massa_melhor_eta, "par mais proximo do #eta",    "l");
+  leg2->Draw();
+
+  c2->Update();
+  sprintf(png, "foton_direto_%s_massa.png", rodada);
+  c2->SaveAs(png);
+
+  // ---- c3: E_iso do foton direto, normalizado por foton (area 1).
+  // A linha vertical e' o corte de isolamento. Comparada com as curvas das
+  // tres origens do ruido (ver pureza.cc), esta e' a mais empilhada perto de
+  // zero: o foton direto nasce sozinho no evento.
+  c3 = new TCanvas("c3", "E_iso -- sinal", 900, 700);
+  gPad->SetLogy();  gPad->SetLeftMargin(0.16);
+  {
+    TH1F *norm = (TH1F*) hist_eiso_direto->Clone("hist_eiso_direto_norm");
+    norm->SetDirectory(0);            // copia de grafico: fora do .root
+
+    // Scale(c, "width") divide cada bin pela largura e multiplica por c.
+    // Com c = 1/integral, a area debaixo da curva passa a valer 1.
+    Double_t area = norm->Integral();
+    if (area > 0) norm->Scale(1. / area, "width");
+
+    Double_t piso = 1e30;
+    for (Int_t b = 1; b <= norm->GetNbinsX(); b++)
+    {
+      Double_t v = norm->GetBinContent(b);
+      if (v > 0 && v < piso) piso = v;
+    }
+    if (piso > 1e29) piso = 1e-6;
+
+    norm->SetTitle("E_{iso} do #gamma direto, normalizado por #gamma");
+    norm->SetYTitle("(1/N_{#gamma}) dN/dE_{iso}  [c/GeV]");
+    norm->SetStats(0);
+    norm->SetLineColor(kBlue);
+    norm->SetLineWidth(2);
+    norm->SetMinimum(piso * 0.5);
+    norm->Draw("HIST E");
+
+    TLine *linha = new TLine(pt_iso_max, piso * 0.5,
+                             pt_iso_max, norm->GetMaximum());
+    linha->SetLineColor(kBlack);
+    linha->SetLineStyle(2);
+    linha->SetLineWidth(2);
+    linha->Draw();
+  }
+  c3->Update();
+  sprintf(png, "foton_direto_%s_eiso.png", rodada);
+  c3->SaveAs(png);
 
   // ================================================================
   //  RESUMO -- vem ANTES do Write(), porque le os histogramas
@@ -450,6 +708,26 @@ void foton_direto(Double_t pt_hat_min = 5.,
   printf("  fracao isolada            : %.2f%%\n",
          n_direto ? 100. * n_direto_iso / n_direto : 0.);
   printf("--------------------------------------------------\n");
+  printf("  MARCACAO POR MASSA INVARIANTE (pi0 e eta)\n");
+  printf("    parceiro                : pT > %.2f GeV/c, |eta| < %.1f\n",
+         pt_parceiro_min, eta_part_max);
+  printf("    janela do pi0           : %.4f +- %.0f MeV\n",
+         M_PI0, janela_pi0 * 1000.);
+  printf("    janela do eta           : %.4f +- %.0f MeV\n",
+         M_ETA, janela_eta * 1000.);
+  printf("    isolados com parceiro   : %lld", n_com_parceiro);
+  if (n_direto_iso) printf("   (%.2f%%)", 100. * n_com_parceiro / n_direto_iso);
+  printf("\n");
+  printf("    marcados pela janela pi0: %lld\n", n_marcado_pi0);
+  printf("    marcados pela janela eta: %lld\n", n_marcado_eta);
+  printf("    marcados no total       : %lld", n_marcado);
+  if (n_direto_iso) printf("   (%.2f%%)", 100. * n_marcado / n_direto_iso);
+  printf("\n");
+  printf("    sobram depois           : %lld\n", n_direto_iso - n_marcado);
+  printf("    TUDO que foi marcado aqui foi marcado POR ACASO: nesta\n");
+  printf("    amostra nao existe foton de decaimento. Essa fracao e' a\n");
+  printf("    PERDA DE SINAL do corte de massa.\n");
+  printf("--------------------------------------------------\n");
   printf("  integral do grafico       : %.6g mb\n",
          hist_pt_direto_mb->Integral());
   printf("  (so' conta o que caiu entre 5 e 40 GeV/c)\n");
@@ -458,6 +736,7 @@ void foton_direto(Double_t pt_hat_min = 5.,
   // ---- salva (POR ULTIMO). Sem Close(): fechar o TFile destroi os
   // ---- histogramas que pertencem a ele e o canvas ficaria em branco.
   arquivo->Write();
-  printf("  Arquivo salvo: %s  (histograma bruto + hist_sigma)\n", nome_arquivo);
-  printf("  Figura salva : %s\n", png);
+  printf("  Arquivo salvo: %s  (histogramas brutos + hist_sigma)\n", nome_arquivo);
+  printf("  Figuras salvas: foton_direto_%s.png, _massa.png e _eiso.png\n",
+         rodada);
 }

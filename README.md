@@ -15,9 +15,13 @@ Mede a **contaminação na identificação de fótons isolados**: de tudo que pa
 num corte de isolamento, que fração é fóton direto e que fração é fundo de
 decaimento de hádrons?
 
-**Resposta: a pureza é 3,58 %** só com o isolamento, e **4,56 %** somando a
+**Resposta: a pureza é 3,57 %** só com o isolamento, e **4,88 %** somando a
 marcação por massa invariante. Na convenção em que a fragmentação conta como
-sinal, 23,22 %.
+sinal, 22,90 %.
+
+A marcação por massa tira **28,0 %** do fundo e custa **0,39 %** do sinal —
+uma razão de 72 para 1, e as duas pontas são medidas, não supostas, porque a
+marcação é aplicada às duas amostras com os mesmos critérios.
 
 Sinal e fundo são gerados como duas amostras separadas e comparados em
 seção de choque:
@@ -25,15 +29,21 @@ seção de choque:
 | | processo | papel |
 |---|---|---|
 | `foton_direto.cc` | `PromptPhoton:all` | sinal — fótons do processo duro |
-| `jatos_foton_v2.cc` | `HardQCD:all` | fundo — π⁰, outro hádron, fragmentação |
+| `jatos_foton_v2.cc` | `HardQCD:all` | fundo — π⁰ + η, outro hádron, fragmentação |
 
 O trabalho inclui o corte de isolamento (ΣpT < 2 GeV/c em ΔR < 0,4), a
 classificação de origem por verdade do MC, a marcação por massa invariante de
-pares de fótons (picos do π⁰ e do η reproduzidos na terceira casa) e a curva
-de pureza em pT.
+pares de fótons em **duas janelas**, a do π⁰ e a do η (os dois picos saem na
+terceira casa decimal), a distribuição de E_iso por origem e a curva de pureza
+em pT.
 
-A produção é fatiada em faixas de pThat e somada com peso σ/N. Os `.root`
-estão versionados, então os resultados abrem sem precisar simular de novo.
+A marcação é aplicada às **duas** amostras, com os mesmos critérios, então a
+perda de sinal é medida e não suposta.
+
+A produção é fatiada em faixas de pThat e somada com peso σ/N: 13 milhões de
+eventos de `HardQCD`, dos quais 10 milhões na faixa de pThat > 15 GeV, que é a
+que sustenta a cauda de pT alto. Os `.root` estão versionados, então os
+resultados abrem sem precisar simular de novo.
 
 Documentação detalhada em [`FotonDireto/README.md`](FotonDireto/README.md) e,
 para a etapa atual, em

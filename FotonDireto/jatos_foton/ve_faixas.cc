@@ -10,8 +10,8 @@
 // SAO 42 HISTOGRAMAS em 8 canvases:
 //   v1  espectros gerais   pt_jato, pt_foton, n_part, soma_cone
 //   v2  decaimento do pi0  assimetria, z do foton lider
-//   v3  v4  v5   z dos ISOLADOS     de pi0 / outro hadron / fragmentacao
-//   v6  v7  v8   z dos NAO isolados de pi0 / outro hadron / fragmentacao
+//   v3  v4  v5   z dos ISOLADOS     de pi0+eta / outro hadron / fragmentacao
+//   v6  v7  v8   z dos NAO isolados de pi0+eta / outro hadron / fragmentacao
 // Cada painel de v3 a v8 e' uma faixa de pT do foton (6 por canvas).
 //
 // Todas as faixas ja' vem multiplicadas pelo seu peso sigma/N, lido do bin 5
@@ -173,7 +173,7 @@ void vf_desenha(TH1F **h, Int_t logy)
 //                 tanto de eventos.
 void ve_faixas(Int_t sem_soma = 0, Double_t eventos_equiv = 0.)
 {
-  const char *curto[NORIGENS]  = {"pi0", "outro", "frag"};
+  const char *curto[NORIGENS]  = {"pi0eta", "outro", "frag"};
   const char *bonito[NORIGENS] = {"#pi^{0}", "outro hadron", "fragmentacao"};
 
   char nome[200];
@@ -293,8 +293,8 @@ void ve_faixas(Int_t sem_soma = 0, Double_t eventos_equiv = 0.)
   printf("---------------------------------------------\n");
   printf("  42 histogramas em 8 canvases:\n");
   printf("    v1 espectros    v2 decaimento do pi0\n");
-  printf("    v3 v4 v5  z ISOLADO     de pi0 / outro / frag\n");
-  printf("    v6 v7 v8  z NAO isolado de pi0 / outro / frag\n");
+  printf("    v3 v4 v5  z ISOLADO     de pi0+eta / outro / frag\n");
+  printf("    v6 v7 v8  z NAO isolado de pi0+eta / outro / frag\n");
   printf("  Os de 2 dimensoes estao na soma_pthat.cc e no\n");
   printf("  abre_jatos_foton_v2.cc de cada faixa.\n");
   printf("=============================================\n");

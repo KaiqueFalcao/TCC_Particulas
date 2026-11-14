@@ -1,10 +1,21 @@
 #!/bin/bash
 # Roda a producao do jatos_foton_v2.cc.
 #
-#   ./producao.sh                  os dois conjuntos, 100 mil eventos cada
-#   ./producao.sh 5000             os dois conjuntos, 5 mil (teste rapido)
-#   ./producao.sh 100000 teto      so' as faixas COM teto (as que se somam)
-#   ./producao.sh 100000 semteto   so' as faixas SEM teto (encaixadas)
+#   ./producao.sh                      producao padrao (ver abaixo)
+#   ./producao.sh 5000 teto 5000       teste rapido, 5 mil em todas as faixas
+#   ./producao.sh 1000000 teto         so' as faixas COM teto (as que se somam)
+#   ./producao.sh 1000000 semteto      so' as faixas SEM teto (encaixadas)
+#
+# QUANTOS EVENTOS, E POR QUE DIFERENTE EM CADA FAIXA
+# As tres primeiras faixas (4-7, 7-10, 10-15) levam N eventos cada. A faixa
+# de cima (> 15) leva N_ALTO, dez vezes mais, porque e' ela que alimenta a
+# regiao de pT alto do espectro -- justamente onde a pureza mais sobe e onde
+# a estatistica era de poucos eventos por bin.
+#
+# Isso NAO desequilibra a soma: o peso de cada faixa e' sigma/N, com o N
+# aceito lido do hist_sigma do proprio arquivo. Gerar dez vezes mais eventos
+# na faixa de cima divide o peso dela por dez, e a secao de choque somada
+# continua a mesma -- muda so' a barra de erro, que fica menor.
 #
 # Sao 4 rodadas por conjunto. A maquina tem poucos nucleos, entao os dois
 # conjuntos vao em LEVAS SEPARADAS de 4, nunca 8 ao mesmo tempo.
@@ -15,15 +26,18 @@
 
 cd "$(dirname "$0")" || exit 1
 
-N=${1:-100000}
-CONJ=${2:-tudo}
+N=${1:-1000000}
+CONJ=${2:-teto}
+N_ALTO=${3:-10000000}
 
 roda_teto() {
-  echo "[$(date +%H:%M:%S)] COM TETO -- 4 faixas exclusivas, $N eventos cada"
+  echo "[$(date +%H:%M:%S)] COM TETO -- 4 faixas exclusivas"
+  echo "            faixas 4-7, 7-10 e 10-15 : $N eventos cada"
+  echo "            faixa  > 15              : $N_ALTO eventos"
+  root -l -b -q "jatos_foton_v2.cc(15., -1., 46, $N_ALTO, \"pthat15_inf\")" > log_pthat15_inf.log 2>&1 &
   root -l -b -q "jatos_foton_v2.cc( 4.,  7., 43, $N, \"pthat04_07\")" > log_pthat04_07.log 2>&1 &
   root -l -b -q "jatos_foton_v2.cc( 7., 10., 44, $N, \"pthat07_10\")" > log_pthat07_10.log 2>&1 &
   root -l -b -q "jatos_foton_v2.cc(10., 15., 45, $N, \"pthat10_15\")" > log_pthat10_15.log 2>&1 &
-  root -l -b -q "jatos_foton_v2.cc(15., -1., 46, $N, \"pthat15_inf\")" > log_pthat15_inf.log 2>&1 &
   wait
   echo "[$(date +%H:%M:%S)] com teto terminou"
 }

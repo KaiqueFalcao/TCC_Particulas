@@ -27,6 +27,16 @@
 // numero de ocorrencias passa o numero de eventos equivalente:
 //   root -l -b -q soma_pthat.cc                 // mb  (padrao)
 //   root -l -b -q 'soma_pthat.cc(100000)'       // ocorrencias em 100 mil ev
+//
+// TRES MANEIRAS DE OLHAR O MESMO ESPECTRO, e todas aparecem nos PNGs:
+//   1) secao de choque por bin, em mb            -- o padrao, ja' descrito
+//   2) normalizado por foton, (1/N) dN/dX        -- area 1, so' a FORMA
+//   3) secao de choque INVARIANTE,
+//        (1/2pi) d2sigma/(dpT dy) em mb/(GeV/c)  -- a forma que se compara
+//        direto com dado publicado, porque nao depende da largura do bin
+//        nem do intervalo de rapidez usado
+// A (2) e a (3) sao so' mudanca de escala da (1). NENHUMA DELAS entra na
+// pureza: a pureza e' razao de secoes de choque, sempre a partir da (1).
 
 #include "TFile.h"
 #include "TCanvas.h"
@@ -35,15 +45,41 @@
 #include "TH2F.h"
 #include "TMath.h"
 #include "TLegend.h"
+#include "TLine.h"
 #include "TROOT.h"
 
 const Int_t NRODADAS = 4;
 const Int_t NFAIXAS  = 6;
-const Int_t NORIGENS = 3;   // 0 = pi0, 1 = outro hadron, 2 = fragmentacao
+const Int_t NORIGENS = 3;   // 0 = pi0 + eta, 1 = outro hadron, 2 = fragmentacao
 
-// Massa do pi0 e a janela usada para marcar, as mesmas da jatos_foton_v2.cc
+// Massas e janelas da marcacao, as mesmas da jatos_foton_v2.cc
 const Double_t M_PI0      = 0.1349768;   // GeV
+const Double_t M_ETA      = 0.547862;    // GeV
 const Double_t JANELA_PI0 = 0.02;        // GeV
+const Double_t JANELA_ETA = 0.02;        // GeV
+
+// Corte de isolamento, so' para desenhar a linha vertical no grafico de E_iso
+const Double_t PT_ISO_MAX = 2.0;         // GeV/c
+
+// ============================================================================
+//  PARAMETROS DA SECAO DE CHOQUE INVARIANTE  --  conferir com o orientador
+// ============================================================================
+// A forma invariante do espectro e'
+//
+//     (1/2pi) d2sigma/(dpT dy)  =  sigma_bin / ( 2pi * largura_do_bin * dy )
+//
+// em mb/(GeV/c). O dy e' o intervalo de rapidez em que os fotons foram
+// selecionados: o corte e' |eta| < 0,5, e para foton (que nao tem massa)
+// y = eta, entao dy = 0,5 - (-0,5) = 1,0.
+//
+// Ligando SP_USA_1_SOBRE_PT, entra tambem o fator 1/pT e a conta passa a ser
+//
+//     E d3sigma/dp3 = (1/(2pi pT)) d2sigma/(dpT dy)   em mb/(GeV/c)^2
+//
+// que e' a outra convencao usada na literatura. As duas descrevem a mesma
+// medida; muda a potencia de pT no eixo. DEIXADO EM kFALSE ate' confirmar.
+const Double_t SP_DY = 1.0;
+const Bool_t   SP_USA_1_SOBRE_PT = kFALSE;
 
 // As 4 rodadas, na ordem das faixas de pThat
 const char *sp_sufixo[NRODADAS] = {"pthat04_07", "pthat07_10",
@@ -51,6 +87,11 @@ const char *sp_sufixo[NRODADAS] = {"pthat04_07", "pthat07_10",
 
 TFile    *sp_arquivo[NRODADAS];
 Double_t  sp_peso   [NRODADAS];
+
+// Quantos histogramas a soma ja' juntou. Contado em vez de escrito a mao:
+// assim a mensagem do fim nunca fica desatualizada quando se acrescenta
+// histograma novo.
+Int_t     sp_nsomados = 0;
 
 // Fator final aplicado a todos os somados, e o rotulo do eixo vertical.
 // Em modo "ocorrencias" o fator converte mb de volta para contagem; em
@@ -71,18 +112,22 @@ TH1F *hist_soma_cone  = 0;
 
 // Espectro de pT dos fotons ISOLADOS, um por origem (35 bins de 5 a 40
 // GeV/c). Mesmo binning do hist_pt_direto_iso da foton_direto.cc.
-TH1F *hist_pt_iso_pi0   = 0;
-TH1F *hist_pt_iso_frag  = 0;
-TH1F *hist_pt_iso_outro = 0;
+TH1F *hist_pt_iso_pi0eta = 0;
+TH1F *hist_pt_iso_frag   = 0;
+TH1F *hist_pt_iso_outro  = 0;
 
-// Massa invariante dos pares de fotons
+// E_iso = soma de pT no cone, por origem, para todo foton energetico
+TH1F *hist_eiso[NORIGENS];
+
+// Massa invariante dos pares de fotons, nas duas janelas
 TH1F *hist_massa_gg = 0;
-TH1F *hist_massa_melhor[NORIGENS];
+TH1F *hist_massa_melhor    [NORIGENS];
+TH1F *hist_massa_melhor_eta[NORIGENS];
 
-// Espectro DEPOIS da marcacao: os marcados como filhos de pi0 foram removidos
-TH1F *hist_pt_pos_pi0   = 0;
-TH1F *hist_pt_pos_frag  = 0;
-TH1F *hist_pt_pos_outro = 0;
+// Espectro DEPOIS da marcacao: os marcados (pi0 ou eta) foram removidos
+TH1F *hist_pt_pos_pi0eta = 0;
+TH1F *hist_pt_pos_frag   = 0;
+TH1F *hist_pt_pos_outro  = 0;
 
 TH2F *hist_td[NFAIXAS] = {0, 0, 0, 0, 0, 0};
 TH2F *hist_Z [NFAIXAS] = {0, 0, 0, 0, 0, 0};
@@ -105,6 +150,10 @@ TCanvas *c11 = 0;
 TCanvas *c12 = 0;
 TCanvas *c13 = 0;   // espectro de pT dos isolados, por origem
 TCanvas *c14 = 0;   // massa invariante
+TCanvas *c15 = 0;   // gerais normalizados por foton
+TCanvas *c16 = 0;   // E_iso por origem
+TCanvas *c17 = 0;   // pT dos isolados, normalizado por foton
+TCanvas *c18 = 0;   // pT dos isolados, secao de choque invariante
 
 // Soma um histograma de UMA dimensao das 4 rodadas, cada uma multiplicada
 // pelo peso da sua faixa. Devolve 0 se o histograma nao existir em algum
@@ -149,7 +198,54 @@ TH1F *soma_1d(const char *nome_hist)
   // do eixo tem que dizer isso, senao o grafico mente.
   total->Scale(sp_fator);
   total->SetYTitle(sp_eixo);
+  sp_nsomados++;
   return total;
+}
+
+// Divide um espectro pela sua propria area, de modo que a area debaixo da
+// curva passe a valer 1. O eixo deixa de ser secao de choque e passa a ser
+// (1/N) dN/dX -- so' a FORMA da distribuicao.
+//
+// Scale(c, "width") divide cada bin pela largura dele e multiplica por c.
+// Com c = 1/integral, sai exatamente a densidade de area 1.
+//
+// NAO serve para a pureza: razao de curvas normalizadas nao e' pureza.
+TH1F *faz_normalizado(TH1F *h, const char *nome)
+{
+  TH1F *nm = (TH1F*) h->Clone(nome);
+  nm->SetDirectory(0);                // copia de grafico: fora do .root
+
+  Double_t area = nm->Integral();     // soma dos bins visiveis
+  if (area > 0) nm->Scale(1. / area, "width");
+
+  nm->SetStats(0);
+  return nm;
+}
+
+// Converte um espectro de "sigma [mb] por bin" para SECAO DE CHOQUE
+// INVARIANTE, dividindo cada bin por 2pi * largura * dy (e por pT, se a
+// chave SP_USA_1_SOBRE_PT estiver ligada). O erro e' dividido pelo mesmo
+// fator, que e' uma constante por bin.
+TH1F *faz_invariante(TH1F *h, const char *nome)
+{
+  TH1F *inv = (TH1F*) h->Clone(nome);
+  inv->SetDirectory(0);               // copia de grafico: fora do .root
+
+  for (Int_t b = 1; b <= inv->GetNbinsX(); b++)
+  {
+    Double_t fator = 2. * TMath::Pi() * inv->GetBinWidth(b) * SP_DY;
+    if (SP_USA_1_SOBRE_PT) fator *= inv->GetBinCenter(b);
+    if (fator <= 0) continue;
+
+    inv->SetBinContent(b, inv->GetBinContent(b) / fator);
+    inv->SetBinError  (b, inv->GetBinError(b)   / fator);
+  }
+
+  inv->SetYTitle(SP_USA_1_SOBRE_PT
+      ? "E d^{3}#sigma/dp^{3}  [mb/(GeV/c)^{2}]"
+      : "(1/2#pi) d^{2}#sigma/(dp_{T}dy)  [mb/(GeV/c)]");
+  inv->SetStats(0);
+  return inv;
 }
 
 // Mesma coisa para os de DUAS dimensoes
@@ -186,6 +282,7 @@ TH2F *soma_2d(const char *nome_hist)
 
   total->Scale(sp_fator);
   total->SetZTitle(sp_eixo);
+  sp_nsomados++;
   return total;
 }
 
@@ -196,7 +293,9 @@ TH2F *soma_2d(const char *nome_hist)
 //                      faixa gerou.
 void soma_pthat(Double_t eventos_equiv = 0.)
 {
-  const char *curto_origem[NORIGENS] = {"pi0", "outro", "frag"};
+  const char *curto_origem[NORIGENS] = {"pi0eta", "outro", "frag"};
+  const char *nome_origem [NORIGENS] = {"#pi^{0} + #eta", "outro hadron",
+                                        "fragmentacao"};
 
   char nome[200], png[200];
 
@@ -279,22 +378,32 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   hist_soma_cone  = soma_1d("hist_soma_cone");
 
   // espectro de pT dos isolados, por origem
-  hist_pt_iso_pi0   = soma_1d("hist_pt_iso_pi0");
-  hist_pt_iso_frag  = soma_1d("hist_pt_iso_frag");
-  hist_pt_iso_outro = soma_1d("hist_pt_iso_outro");
+  hist_pt_iso_pi0eta = soma_1d("hist_pt_iso_pi0eta");
+  hist_pt_iso_frag   = soma_1d("hist_pt_iso_frag");
+  hist_pt_iso_outro  = soma_1d("hist_pt_iso_outro");
 
-  // massa invariante dos pares de fotons
+  // E_iso por origem
+  for (Int_t o = 0; o < NORIGENS; o++)
+  {
+    sprintf(nome, "hist_eiso_%s", curto_origem[o]);
+    hist_eiso[o] = soma_1d(nome);
+  }
+
+  // massa invariante dos pares de fotons, nas duas janelas
   hist_massa_gg = soma_1d("hist_massa_gg");
   for (Int_t o = 0; o < NORIGENS; o++)
   {
     sprintf(nome, "hist_massa_melhor_%s", curto_origem[o]);
     hist_massa_melhor[o] = soma_1d(nome);
+
+    sprintf(nome, "hist_massa_melhor_eta_%s", curto_origem[o]);
+    hist_massa_melhor_eta[o] = soma_1d(nome);
   }
 
   // espectro depois da marcacao
-  hist_pt_pos_pi0   = soma_1d("hist_pt_pos_pi0");
-  hist_pt_pos_frag  = soma_1d("hist_pt_pos_frag");
-  hist_pt_pos_outro = soma_1d("hist_pt_pos_outro");
+  hist_pt_pos_pi0eta = soma_1d("hist_pt_pos_pi0eta");
+  hist_pt_pos_frag   = soma_1d("hist_pt_pos_frag");
+  hist_pt_pos_outro  = soma_1d("hist_pt_pos_outro");
 
   hist_eta_phi    = soma_2d("hist_eta_phi");
 
@@ -323,12 +432,15 @@ void soma_pthat(Double_t eventos_equiv = 0.)
 
   // Os tres espectros por origem sao novos: se faltarem, o .root foi gerado
   // por uma versao da jatos_foton_v2.cc anterior a eles.
-  if (!hist_pt_iso_pi0 || !hist_pt_iso_frag || !hist_pt_iso_outro ||
-      !hist_massa_gg   || !hist_massa_melhor[2] || !hist_pt_pos_pi0)
+  if (!hist_pt_iso_pi0eta || !hist_pt_iso_frag || !hist_pt_iso_outro ||
+      !hist_massa_gg       || !hist_massa_melhor[2] || !hist_pt_pos_pi0eta ||
+      !hist_massa_melhor_eta[2] || !hist_eiso[2])
   {
-    printf("  Faltam histogramas novos (hist_pt_iso_* ou hist_massa_*).\n");
+    printf("  Faltam histogramas novos (hist_pt_iso_*, hist_eiso_* ou\n");
+    printf("  hist_massa_*). O .root pode ser de uma versao anterior a\n");
+    printf("  juncao pi0 + eta, que mudou o nome dos histogramas.\n");
     printf("  Rode a producao de novo:\n");
-    printf("    ./producao.sh 100000 teto\n");
+    printf("    ./producao.sh\n");
     return;
   }
 
@@ -339,7 +451,8 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // ================================================================
   for (Int_t i = 0; i < NRODADAS; i++) sp_arquivo[i]->Close();
 
-  printf("  4 arquivos lidos e fechados. 71 histogramas somados.\n");
+  printf("  4 arquivos lidos e fechados. %d histogramas somados.\n",
+         sp_nsomados);
 
   // ================================================================
   //  4) ARQUIVO DE SAIDA
@@ -354,15 +467,19 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   hist_assimetria->SetDirectory(arquivo);
   hist_z_gama    ->SetDirectory(arquivo);
   hist_soma_cone ->SetDirectory(arquivo);
-  hist_pt_iso_pi0  ->SetDirectory(arquivo);
-  hist_pt_iso_frag ->SetDirectory(arquivo);
-  hist_pt_iso_outro->SetDirectory(arquivo);
-  hist_massa_gg    ->SetDirectory(arquivo);
+  hist_pt_iso_pi0eta->SetDirectory(arquivo);
+  hist_pt_iso_frag  ->SetDirectory(arquivo);
+  hist_pt_iso_outro ->SetDirectory(arquivo);
+  hist_massa_gg     ->SetDirectory(arquivo);
   for (Int_t o = 0; o < NORIGENS; o++)
-    hist_massa_melhor[o]->SetDirectory(arquivo);
-  hist_pt_pos_pi0  ->SetDirectory(arquivo);
-  hist_pt_pos_frag ->SetDirectory(arquivo);
-  hist_pt_pos_outro->SetDirectory(arquivo);
+  {
+    hist_eiso[o]                ->SetDirectory(arquivo);
+    hist_massa_melhor[o]        ->SetDirectory(arquivo);
+    hist_massa_melhor_eta[o]    ->SetDirectory(arquivo);
+  }
+  hist_pt_pos_pi0eta->SetDirectory(arquivo);
+  hist_pt_pos_frag  ->SetDirectory(arquivo);
+  hist_pt_pos_outro ->SetDirectory(arquivo);
   hist_eta_phi   ->SetDirectory(arquivo);
 
   for (Int_t f = 0; f < NFAIXAS; f++)
@@ -427,10 +544,10 @@ void soma_pthat(Double_t eventos_equiv = 0.)
 
   // ---- c7, c8, c9: z dos ISOLADOS, uma origem por canvas
   TCanvas *canvas_iso[NORIGENS];
-  const char *arq_iso[NORIGENS] = {"soma_z_iso_pi0.png",
+  const char *arq_iso[NORIGENS] = {"soma_z_iso_pi0eta.png",
                                    "soma_z_iso_outro.png",
                                    "soma_z_iso_frag.png"};
-  const char *tit_iso[NORIGENS] = {"SOMA -- z: isolado, de pi0",
+  const char *tit_iso[NORIGENS] = {"SOMA -- z: isolado, de pi0 + eta",
                                    "SOMA -- z: isolado, de outro hadron",
                                    "SOMA -- z: isolado, de fragmentacao"};
 
@@ -452,10 +569,10 @@ void soma_pthat(Double_t eventos_equiv = 0.)
 
   // ---- c10, c11, c12: z dos NAO ISOLADOS, para comparar
   TCanvas *canvas_nao[NORIGENS];
-  const char *arq_nao[NORIGENS] = {"soma_z_naoiso_pi0.png",
+  const char *arq_nao[NORIGENS] = {"soma_z_naoiso_pi0eta.png",
                                    "soma_z_naoiso_outro.png",
                                    "soma_z_naoiso_frag.png"};
-  const char *tit_nao[NORIGENS] = {"SOMA -- z: nao isolado, de pi0",
+  const char *tit_nao[NORIGENS] = {"SOMA -- z: nao isolado, de pi0 + eta",
                                    "SOMA -- z: nao isolado, de outro hadron",
                                    "SOMA -- z: nao isolado, de fragmentacao"};
 
@@ -478,9 +595,9 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // ---- c13: espectro de pT dos fotons ISOLADOS, um painel por origem.
   // Este e' o RUIDO separado por origem, no mesmo binning do sinal da
   // foton_direto.cc -- da' para por os quatro no mesmo grafico depois.
-  TH1F *espectro[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_frag,
+  TH1F *espectro[NORIGENS] = {hist_pt_iso_pi0eta, hist_pt_iso_frag,
                               hist_pt_iso_outro};
-  const char *tit_esp[NORIGENS] = {"#gamma isolado de #pi^{0}",
+  const char *tit_esp[NORIGENS] = {"#gamma isolado de #pi^{0} + #eta",
                                    "#gamma isolado de fragmentacao",
                                    "#gamma isolado de outro hadron"};
   Int_t cor_esp[NORIGENS] = {kBlue, kRed, kGreen + 2};
@@ -505,9 +622,16 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   c13->Update();
   c13->SaveAs("soma_pt_iso_por_origem.png");
 
-  // ---- c14: MASSA INVARIANTE, ja' somada e pesada por secao de choque
-  c14 = new TCanvas("c14", "SOMA -- massa invariante", 1500, 500);
-  c14->Divide(3, 1);
+  // ---- c14: MASSA INVARIANTE, ja' somada e pesada por secao de choque.
+  // Painel 1: todos os pares, alcance inteiro -- o pi0 e o eta aparecem.
+  // Painel 2: zoom na regiao do pi0.
+  // Painel 3: melhor par de cada foton isolado NA JANELA DO PI0, por origem.
+  // Painel 4: o mesmo NA JANELA DO ETA.
+  // Os paineis 3 e 4 sao o retrato da marcacao: mostram o que cada uma das
+  // duas janelas pega em cada origem -- e, na curva de fragmentacao, o que
+  // cada uma pega por engano.
+  c14 = new TCanvas("c14", "SOMA -- massa invariante", 1400, 1000);
+  c14->Divide(2, 2);
 
   c14->cd(1);
   gPad->SetLogy();  gPad->SetLeftMargin(0.16);
@@ -527,34 +651,208 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   zoom->SetLineColor(kBlue);
   zoom->Draw("HIST E");
 
-  c14->cd(3);
-  gPad->SetLogy();  gPad->SetLeftMargin(0.16);
+  // Os dois paineis de baixo tem a mesma estrutura, so' muda o conjunto de
+  // histogramas e a janela mostrada. Por isso vao num laco de dois passos.
   {
     Int_t cor_m[NORIGENS] = {kBlue, kGreen + 2, kRed};
-    Double_t topo_m = 0;
-    for (Int_t o = 0; o < NORIGENS; o++)
-      if (hist_massa_melhor[o]->GetMaximum() > topo_m)
-        topo_m = hist_massa_melhor[o]->GetMaximum();
 
-    TLegend *leg_m = new TLegend(0.45, 0.70, 0.89, 0.89);
-    leg_m->SetTextSize(0.035);
-
-    for (Int_t o = 0; o < NORIGENS; o++)
+    for (Int_t jan = 0; jan < 2; jan++)      // 0 = janela do pi0, 1 = do eta
     {
-      hist_massa_melhor[o]->SetTitle("melhor par, #gamma ISOLADO");
-      hist_massa_melhor[o]->SetStats(0);
-      hist_massa_melhor[o]->SetLineColor(cor_m[o]);
-      hist_massa_melhor[o]->SetLineWidth(2);
-      hist_massa_melhor[o]->SetMaximum(topo_m * 2.);
-      hist_massa_melhor[o]->SetYTitle(sp_eixo);
-      hist_massa_melhor[o]->GetXaxis()->SetRangeUser(0., 0.5);
-      hist_massa_melhor[o]->Draw(o == 0 ? "HIST E" : "HIST E SAME");
-      leg_m->AddEntry(hist_massa_melhor[o], curto_origem[o], "l");
+      TH1F **conj = (jan == 0) ? hist_massa_melhor : hist_massa_melhor_eta;
+      Double_t x_lo = (jan == 0) ? 0.00 : 0.35;
+      Double_t x_hi = (jan == 0) ? 0.30 : 0.75;
+
+      c14->cd(3 + jan);
+      gPad->SetLogy();  gPad->SetLeftMargin(0.16);
+
+      Double_t topo_m = 0;
+      for (Int_t o = 0; o < NORIGENS; o++)
+        if (conj[o]->GetMaximum() > topo_m) topo_m = conj[o]->GetMaximum();
+
+      TLegend *leg_m = new TLegend(0.45, 0.70, 0.89, 0.89);
+      leg_m->SetTextSize(0.035);
+
+      for (Int_t o = 0; o < NORIGENS; o++)
+      {
+        conj[o]->SetTitle(jan == 0 ? "melhor par na janela do #pi^{0}"
+                                   : "melhor par na janela do #eta");
+        conj[o]->SetStats(0);
+        conj[o]->SetLineColor(cor_m[o]);
+        conj[o]->SetLineWidth(2);
+        conj[o]->SetMaximum(topo_m * 2.);
+        conj[o]->SetYTitle(sp_eixo);
+        conj[o]->GetXaxis()->SetRangeUser(x_lo, x_hi);
+        conj[o]->Draw(o == 0 ? "HIST E" : "HIST E SAME");
+        leg_m->AddEntry(conj[o], nome_origem[o], "l");
+      }
+      leg_m->Draw();
     }
-    leg_m->Draw();
   }
   c14->Update();
   c14->SaveAs("soma_massa_invariante.png");
+
+  // ---- c15: os MESMOS graficos do soma_gerais.png, mas normalizados por
+  // foton (ou por jato): cada curva dividida pela sua area, que passa a
+  // valer 1. O eixo deixa de ser secao de choque e passa a ser (1/N) dN/dX.
+  // Serve para comparar FORMAS; os tamanhos relativos ficam no soma_gerais.
+  c15 = new TCanvas("c15", "SOMA -- gerais, normalizados", 1200, 1000);
+  c15->Divide(2, 2);
+  {
+    TH1F *orig[4] = {hist_pt_jato, hist_n_part, hist_pt_foton, hist_soma_cone};
+    const char *eixo_y[4] = {"(1/N) dN/dp_{T}^{jato}  [c/GeV]",
+                             "(1/N) dN/dN_{const}",
+                             "(1/N) dN/dp_{T}^{#gamma}  [c/GeV]",
+                             "(1/N) dN/dE_{iso}  [c/GeV]"};
+
+    for (Int_t i = 0; i < 4; i++)
+    {
+      c15->cd(i + 1);
+      gPad->SetLeftMargin(0.16);
+      if (i == 3) gPad->SetLogy();
+
+      sprintf(nome, "sp_norm_%d", i);
+      TH1F *nm = faz_normalizado(orig[i], nome);
+      nm->SetYTitle(eixo_y[i]);
+      nm->SetLineWidth(2);
+      nm->Draw("HIST E");
+    }
+  }
+  c15->Update();
+  c15->SaveAs("soma_gerais_norm.png");
+
+  // ---- c16: E_iso por origem, normalizado por foton (area 1 em cada).
+  // A linha vertical tracejada e' o corte de isolamento: o que esta' a
+  // esquerda e' aceito. A distancia entre as curvas nessa regiao e' o
+  // motivo de o isolamento funcionar.
+  c16 = new TCanvas("c16", "SOMA -- E_iso por origem", 900, 700);
+  gPad->SetLogy();
+  gPad->SetLeftMargin(0.16);
+  {
+    Int_t cor_e[NORIGENS] = {kBlue, kGreen + 2, kRed};
+    TH1F *norm_e[NORIGENS];
+    Double_t topo_e = 0, piso_e = 1e30;
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      sprintf(nome, "sp_eiso_norm_%s", curto_origem[o]);
+      norm_e[o] = faz_normalizado(hist_eiso[o], nome);
+
+      if (norm_e[o]->GetMaximum() > topo_e) topo_e = norm_e[o]->GetMaximum();
+      for (Int_t b = 1; b <= norm_e[o]->GetNbinsX(); b++)
+      {
+        Double_t v = norm_e[o]->GetBinContent(b);
+        if (v > 0 && v < piso_e) piso_e = v;
+      }
+    }
+    if (piso_e > 1e29) piso_e = 1e-6;
+
+    TLegend *leg_e = new TLegend(0.48, 0.68, 0.89, 0.89);
+    leg_e->SetTextSize(0.033);
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      norm_e[o]->SetTitle("isolamento por origem, normalizado por #gamma");
+      norm_e[o]->SetXTitle("E_{iso} = #Sigma pT^{cone} [GeV/c]");
+      norm_e[o]->SetYTitle("(1/N_{#gamma}) dN/dE_{iso}  [c/GeV]");
+      norm_e[o]->SetLineColor(cor_e[o]);
+      norm_e[o]->SetLineWidth(2);
+      norm_e[o]->SetMinimum(piso_e * 0.5);
+      norm_e[o]->SetMaximum(topo_e * 3.);
+      norm_e[o]->Draw(o == 0 ? "HIST E" : "HIST E SAME");
+      leg_e->AddEntry(norm_e[o], nome_origem[o], "l");
+    }
+
+    TLine *lin_e = new TLine(PT_ISO_MAX, piso_e * 0.5,
+                             PT_ISO_MAX, topo_e * 3.);
+    lin_e->SetLineColor(kBlack);
+    lin_e->SetLineStyle(2);
+    lin_e->SetLineWidth(2);
+    lin_e->Draw();
+    leg_e->AddEntry(lin_e, "corte de isolamento", "l");
+    leg_e->Draw();
+  }
+  c16->Update();
+  c16->SaveAs("soma_eiso.png");
+
+  // ---- c17: espectro de pT dos isolados, normalizado por foton.
+  // Mesma informacao do soma_pt_iso_por_origem.png, outra escala: aqui as
+  // tres curvas tem area 1 e da' para ver que o espectro do fundo de
+  // decaimento cai mais rapido em pT do que o de fragmentacao.
+  c17 = new TCanvas("c17", "SOMA -- pT dos isolados, normalizado", 900, 700);
+  gPad->SetLogy();
+  gPad->SetLeftMargin(0.16);
+  {
+    TH1F *bruto[NORIGENS] = {hist_pt_iso_pi0eta, hist_pt_iso_outro,
+                             hist_pt_iso_frag};
+    Int_t cor_n[NORIGENS] = {kBlue, kGreen + 2, kRed};
+
+    TLegend *leg_n = new TLegend(0.48, 0.72, 0.89, 0.89);
+    leg_n->SetTextSize(0.033);
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      sprintf(nome, "sp_pt_iso_norm_%s", curto_origem[o]);
+      TH1F *nm = faz_normalizado(bruto[o], nome);
+
+      nm->SetTitle("#gamma isolado por origem, normalizado por #gamma");
+      nm->SetXTitle("p_{T}^{#gamma} [GeV/c]");
+      nm->SetYTitle("(1/N_{#gamma}) dN/dp_{T}  [c/GeV]");
+      nm->SetLineColor(cor_n[o]);
+      nm->SetLineWidth(2);
+      nm->Draw(o == 0 ? "HIST E" : "HIST E SAME");
+      leg_n->AddEntry(nm, nome_origem[o], "l");
+    }
+    leg_n->Draw();
+  }
+  c17->Update();
+  c17->SaveAs("soma_pt_iso_norm.png");
+
+  // ---- c18: espectro de pT dos isolados em SECAO DE CHOQUE INVARIANTE,
+  // antes e depois da marcacao por massa. Preto: a soma das tres origens.
+  // Tracejado: a mesma soma depois de jogar fora os marcados. A diferenca
+  // entre as duas e' o que a marcacao conseguiu remover.
+  c18 = new TCanvas("c18", "SOMA -- pT invariante", 900, 700);
+  gPad->SetLogy();
+  gPad->SetLeftMargin(0.17);
+  {
+    // soma das tres origens, antes e depois
+    TH1F *antes = (TH1F*) hist_pt_iso_pi0eta->Clone("sp_fundo_antes");
+    antes->SetDirectory(0);
+    antes->Add(hist_pt_iso_outro);
+    antes->Add(hist_pt_iso_frag);
+
+    TH1F *depois = (TH1F*) hist_pt_pos_pi0eta->Clone("sp_fundo_depois");
+    depois->SetDirectory(0);
+    depois->Add(hist_pt_pos_outro);
+    depois->Add(hist_pt_pos_frag);
+
+    TH1F *inv_a = faz_invariante(antes,  "sp_inv_antes");
+    TH1F *inv_d = faz_invariante(depois, "sp_inv_depois");
+
+    inv_a->SetTitle("ruido isolado -- secao de choque invariante");
+    inv_a->SetXTitle("p_{T}^{#gamma} [GeV/c]");
+    inv_a->SetLineColor(kBlack);
+    inv_a->SetLineWidth(3);
+    inv_a->Draw("HIST E");
+
+    inv_d->SetLineColor(kAzure + 2);
+    inv_d->SetLineWidth(3);
+    inv_d->SetLineStyle(2);
+    inv_d->Draw("HIST E SAME");
+
+    TLegend *leg_i = new TLegend(0.42, 0.72, 0.89, 0.89);
+    leg_i->SetTextSize(0.032);
+    leg_i->AddEntry(inv_a, "so' isolamento", "l");
+    leg_i->AddEntry(inv_d, "isolamento + massa m_{#gamma#gamma}", "l");
+    sprintf(nome, "dy = %.1f%s", SP_DY,
+            SP_USA_1_SOBRE_PT ? ", com 1/p_{T}" : ", sem 1/p_{T}");
+    leg_i->SetHeader(nome);
+    leg_i->Draw();
+
+    delete antes;  delete depois;
+  }
+  c18->Update();
+  c18->SaveAs("soma_pt_iso_invariante.png");
 
   // ================================================================
   //  RESUMO
@@ -587,8 +885,16 @@ void soma_pthat(Double_t eventos_equiv = 0.)
     Double_t s_iso = 0, s_nao = 0;
     for (Int_t f = 0; f < NFAIXAS; f++)
     {
-      s_iso += hist_z_iso   [o][f]->Integral();
-      s_nao += hist_z_naoiso[o][f]->Integral();
+      // Integral(0, nbins+1) e' de proposito: inclui o underflow e o
+      // OVERFLOW. O histograma de z vai de 0 a 1, e um foton de
+      // fragmentacao isolado e' praticamente o jato inteiro, ou seja
+      // z ~ 1, que cai no overflow. Com Integral() puro esses fotons
+      // ficavam de fora e a fracao isolada da fragmentacao saia baixa
+      // (67% em vez de 73%). Nao e' corte nenhum: e' so' nao jogar
+      // fora a ultima caixa.
+      Int_t nb = hist_z_iso[o][f]->GetNbinsX();
+      s_iso += hist_z_iso   [o][f]->Integral(0, nb + 1);
+      s_nao += hist_z_naoiso[o][f]->Integral(0, nb + 1);
     }
 
     if (outra_unidade)
@@ -603,28 +909,28 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // Esta e' a versao que vale: os contadores crus que cada rodada
   // imprime sao por faixa de pThat e nao podem ser somados direto.
   printf("---------------------------------------------\n");
-  printf("  MARCACAO POR MASSA INVARIANTE\n");
-  printf("  Marcado = existe parceiro com |m - m_pi0| < %.0f MeV\n",
-         JANELA_PI0 * 1000.);
+  printf("  MARCACAO POR MASSA INVARIANTE (duas janelas)\n");
+  printf("  Marcado = existe parceiro visivel com\n");
+  printf("      |m - %.4f| < %.0f MeV   (pi0)   OU\n", M_PI0, JANELA_PI0 * 1000.);
+  printf("      |m - %.4f| < %.0f MeV   (eta)\n",      M_ETA, JANELA_ETA * 1000.);
   // ATENCAO ao denominador. O hist_massa_melhor so' e' preenchido quando
   // existe ALGUM parceiro visivel. O foton cujo irmao ficou abaixo do
   // limiar nao entra nele -- e e' justamente esse o fundo IRREDUTIVEL.
   // Usar o hist_massa_melhor como denominador daria a eficiencia "entre
   // os que tem parceiro", que e' otimista e nao responde nada. O
   // denominador certo e' o total de isolados, do hist_pt_iso_*.
-  printf("  %-8s %12s %12s %12s %8s %9s\n", "origem",
-         "isolado[mb]", "c/ parc[mb]", "marcado[mb]",
-         "marcado%", "s/ parc%");
+  printf("  %-8s %12s %12s %11s %11s %9s\n", "origem",
+         "isolado[mb]", "c/ parc[mb]", "pi0 [mb]", "eta [mb]", "s/ parc%");
 
   {
-    // na ordem de curto_origem: pi0, outro hadron, fragmentacao
-    TH1F *iso_org[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_outro,
+    // na ordem de curto_origem: pi0 + eta, outro hadron, fragmentacao
+    TH1F *iso_org[NORIGENS] = {hist_pt_iso_pi0eta, hist_pt_iso_outro,
                                hist_pt_iso_frag};
 
-    Int_t b_lo = hist_massa_melhor[0]->FindBin(M_PI0 - JANELA_PI0);
-    Int_t b_hi = hist_massa_melhor[0]->FindBin(M_PI0 + JANELA_PI0);
-
-    Double_t antes_tot = 0, sobra_tot = 0, sobra_frag = 0, frag_tot = 0;
+    Int_t p_lo = hist_massa_melhor[0]->FindBin(M_PI0 - JANELA_PI0);
+    Int_t p_hi = hist_massa_melhor[0]->FindBin(M_PI0 + JANELA_PI0);
+    Int_t e_lo = hist_massa_melhor_eta[0]->FindBin(M_ETA - JANELA_ETA);
+    Int_t e_hi = hist_massa_melhor_eta[0]->FindBin(M_ETA + JANELA_ETA);
 
     for (Int_t o = 0; o < NORIGENS; o++)
     {
@@ -633,28 +939,22 @@ void soma_pthat(Double_t eventos_equiv = 0.)
       Int_t nb = iso_org[o]->GetNbinsX();
       Double_t tot  = iso_org[o]->Integral(0, nb + 1) / sp_fator;
 
-      Double_t comp = hist_massa_melhor[o]->Integral() / sp_fator;
-      Double_t marc = hist_massa_melhor[o]->Integral(b_lo, b_hi) / sp_fator;
+      Double_t comp  = hist_massa_melhor[o]->Integral() / sp_fator;
+      Double_t m_pi0 = hist_massa_melhor    [o]->Integral(p_lo, p_hi) / sp_fator;
+      Double_t m_eta = hist_massa_melhor_eta[o]->Integral(e_lo, e_hi) / sp_fator;
 
-      printf("  %-8s %12.4e %12.4e %12.4e %7.2f%% %8.2f%%\n",
-             curto_origem[o], tot, comp, marc,
-             tot ? 100. * marc / tot : 0.,
+      printf("  %-8s %12.4e %12.4e %11.4e %11.4e %8.2f%%\n",
+             curto_origem[o], tot, comp, m_pi0, m_eta,
              tot ? 100. * (tot - comp) / tot : 0.);
-
-      antes_tot += tot;
-      sobra_tot += tot - marc;
-      if (o == 2) { sobra_frag = tot - marc; frag_tot = tot; }
     }
 
-    printf("  ------------------------------------------\n");
-    printf("  amostra isolada ANTES : %.6e mb\n", antes_tot);
-    printf("  amostra isolada DEPOIS: %.6e mb\n", sobra_tot);
-    printf("  rejeitado pela marcacao: %6.2f%%\n",
-           antes_tot ? 100. * (antes_tot - sobra_tot) / antes_tot : 0.);
-    printf("  fragmentacao ANTES    : %6.2f%%\n",
-           antes_tot ? 100. * frag_tot   / antes_tot : 0.);
-    printf("  fragmentacao DEPOIS   : %6.2f%%\n",
-           sobra_tot ? 100. * sobra_frag / sobra_tot : 0.);
+    printf("  (pi0 e eta sao as duas janelas separadas. A soma das duas e'\n");
+    printf("   um LIMITE DE CIMA do total removido, porque um mesmo foton\n");
+    printf("   pode ter um parceiro em cada janela e seria contado duas\n");
+    printf("   vezes. O total que vale e' o da tabela seguinte, que vem do\n");
+    printf("   que foi de fato removido.)\n");
+    printf("  (s/ parc%% = sem parceiro visivel nenhum: o fundo IRREDUTIVEL,\n");
+    printf("   o foton cujo irmao ficou abaixo do limiar.)\n");
   }
 
   // ---- confere a remocao contra os espectros de fato removidos.
@@ -664,13 +964,17 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // ha' desacordo entre o que foi contado e o que foi removido.
   printf("  ------------------------------------------\n");
   printf("  ESPECTRO REMOVIDO DE FATO (hist_pt_pos_*)\n");
+  printf("  Esta e' a conta que vale: o jatos_foton_v2.cc so' preencheu o\n");
+  printf("  hist_pt_pos_* com os fotons que SOBREVIVERAM as duas janelas.\n");
   printf("  %-8s %13s %13s %10s\n",
          "origem", "antes[mb]", "depois[mb]", "removido%");
   {
-    TH1F *ant[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_outro,
+    TH1F *ant[NORIGENS] = {hist_pt_iso_pi0eta, hist_pt_iso_outro,
                            hist_pt_iso_frag};
-    TH1F *dep[NORIGENS] = {hist_pt_pos_pi0, hist_pt_pos_outro,
+    TH1F *dep[NORIGENS] = {hist_pt_pos_pi0eta, hist_pt_pos_outro,
                            hist_pt_pos_frag};
+
+    Double_t antes_tot = 0, depois_tot = 0, frag_a = 0, frag_d = 0;
 
     for (Int_t o = 0; o < NORIGENS; o++)
     {
@@ -680,6 +984,42 @@ void soma_pthat(Double_t eventos_equiv = 0.)
 
       printf("  %-8s %13.4e %13.4e %9.2f%%\n", curto_origem[o], a, d,
              a ? 100. * (a - d) / a : 0.);
+
+      antes_tot += a;  depois_tot += d;
+      if (o == 2) { frag_a = a; frag_d = d; }
+    }
+
+    printf("  ------------------------------------------\n");
+    printf("  amostra isolada ANTES  : %.6e mb\n", antes_tot);
+    printf("  amostra isolada DEPOIS : %.6e mb\n", depois_tot);
+    printf("  rejeitado pela marcacao: %6.2f%%\n",
+           antes_tot ? 100. * (antes_tot - depois_tot) / antes_tot : 0.);
+    printf("  fragmentacao ANTES     : %6.2f%%\n",
+           antes_tot  ? 100. * frag_a / antes_tot  : 0.);
+    printf("  fragmentacao DEPOIS    : %6.2f%%\n",
+           depois_tot ? 100. * frag_d / depois_tot : 0.);
+  }
+
+  // ---- E_ISO por origem: media e eficiencia do isolamento.
+  // A fracao abaixo do corte e' a eficiencia do isolamento para aquela
+  // origem. O corte de 2,0 GeV/c cai numa borda de bin, entao a integral
+  // ate' o bin anterior e' exatamente o que e' aceito.
+  printf("---------------------------------------------\n");
+  printf("  E_iso POR ORIGEM (soma de pT no cone)\n");
+  printf("  %-8s %13s %10s %13s %11s\n", "origem",
+         "energet.[mb]", "<E_iso>", "aceito[mb]", "eficiencia");
+  {
+    Int_t b_corte = hist_eiso[0]->FindBin(PT_ISO_MAX) - 1;   // ultimo aceito
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      Int_t nbe = hist_eiso[o]->GetNbinsX();
+      Double_t tudo   = hist_eiso[o]->Integral(0, nbe + 1) / sp_fator;
+      Double_t aceito = hist_eiso[o]->Integral(1, b_corte)  / sp_fator;
+
+      printf("  %-8s %13.4e %10.3f %13.4e %10.2f%%\n", curto_origem[o],
+             tudo, hist_eiso[o]->GetMean(), aceito,
+             tudo ? 100. * aceito / tudo : 0.);
     }
   }
 
@@ -691,9 +1031,9 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   printf("  ESPECTRO DE pT DOS ISOLADOS, 5 a 40 GeV/c\n");
   printf("  (conta tambem os que nao cairam em jato)\n");
 
-  TH1F *esp_res[NORIGENS] = {hist_pt_iso_pi0, hist_pt_iso_frag,
+  TH1F *esp_res[NORIGENS] = {hist_pt_iso_pi0eta, hist_pt_iso_frag,
                              hist_pt_iso_outro};
-  const char *nome_res[NORIGENS] = {"pi0", "frag", "outro"};
+  const char *nome_res[NORIGENS] = {"pi0eta", "frag", "outro"};
 
   for (Int_t o = 0; o < NORIGENS; o++)
   {
@@ -709,5 +1049,9 @@ void soma_pthat(Double_t eventos_equiv = 0.)
   // pertencem a ele, e os canvases ficariam em branco. O Write() grava.
   arquivo->Write();
   printf("  Arquivo salvo: soma_pthat.root\n");
-  printf("  14 PNGs salvos com prefixo soma_\n");
+  printf("  18 PNGs salvos com prefixo soma_\n");
+  printf("    em secao de choque : soma_gerais, soma_pt_iso_por_origem, ...\n");
+  printf("    normalizados       : soma_gerais_norm, soma_pt_iso_norm,\n");
+  printf("                         soma_eiso\n");
+  printf("    invariante         : soma_pt_iso_invariante\n");
 }

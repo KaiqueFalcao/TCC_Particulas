@@ -16,6 +16,17 @@
 //   G) z dos fotons energeticos ISOLADOS,     por origem (3 x 6 faixas)  -- NOVO
 //   H) z dos fotons energeticos NAO ISOLADOS, por origem (3 x 6 faixas)  -- NOVO
 //
+// AS TRES ORIGENS:
+//   0 = pi0 + eta       decaimento de pi0 (PDG 111) OU de eta (PDG 221)
+//   1 = outro hadron    qualquer outro hadron, JA' SEM o eta
+//   2 = fragmentacao    foton irradiado por um quark no chuveiro
+//
+// O eta foi tirado de "outro hadron" e juntado ao pi0 porque ele faz a MESMA
+// coisa que o pi0: decai em dois fotons (eta -> gama gama, cerca de 39% das
+// vezes) e, quando um dos dois fica mole, o outro se disfarca de foton direto.
+// E' o mesmo mecanismo de contaminacao, e a marcacao por massa invariante
+// pega os dois do mesmo jeito -- basta olhar tambem a janela de massa do eta.
+//
 // Os conjuntos A, B e F do jatos_foton.cc foram removidos: G e H os substituem,
 // agora fatiados por pT do FOTON e separados pelas tres origens.
 //
@@ -60,6 +71,7 @@
 #include "TH1F.h"
 #include "TH2F.h"
 #include "TLegend.h"
+#include "TLine.h"
 #include "TMath.h"
 
 #include "fastjet/PseudoJet.hh"
@@ -70,9 +82,11 @@
 
 const Int_t NFAIXAS = 6;
 
-// Massa do pi0, PDG 2024. Serve de alvo na marcacao por massa invariante.
+// Massas do pi0 e do eta, PDG 2024. Sao os dois alvos da marcacao por massa
+// invariante: os dois decaem em dois fotons e os dois contaminam a amostra.
 const Double_t M_PI0 = 0.1349768;   // GeV
-const Int_t NORIGENS = 3;   // 0 = pi0, 1 = outro hadron, 2 = fragmentacao
+const Double_t M_ETA = 0.547862;    // GeV
+const Int_t NORIGENS = 3;   // 0 = pi0 + eta, 1 = outro hadron, 2 = fragmentacao
 
 // Ponteiros em escopo de arquivo: continuam acessiveis no prompt do ROOT
 // depois que a macro termina, entao da' para mexer nos histogramas.
@@ -87,21 +101,29 @@ TH1F   *hist_soma_cone   = 0;   // soma de pT no cone, dos fotons energeticos
 // Espectro de pT dos fotons ISOLADOS, um histograma por origem. Mesmo
 // binning do hist_pt_direto_iso da foton_direto.cc, para o RUIDO de cada
 // origem poder ser sobreposto ao SINAL dos fotons diretos.
-TH1F   *hist_pt_iso_pi0   = 0;
-TH1F   *hist_pt_iso_frag  = 0;
-TH1F   *hist_pt_iso_outro = 0;
+TH1F   *hist_pt_iso_pi0eta = 0;
+TH1F   *hist_pt_iso_frag   = 0;
+TH1F   *hist_pt_iso_outro  = 0;
+
+// E_iso = soma de pT no cone de isolamento, um histograma por origem, para
+// TODO foton energetico (isolado ou nao). E' a distribuicao cujo pedaco
+// abaixo do corte de 2 GeV/c e' a eficiencia do isolamento daquela origem.
+// A foton_direto.cc tem o mesmo histograma para o foton direto, com o mesmo
+// binning, para as quatro curvas poderem ir ao mesmo grafico.
+TH1F   *hist_eiso[NORIGENS];
 
 // MASSA INVARIANTE dos pares de fotons. Serve para marcar e descartar o
 // foton energetico que, na verdade, e' filho de um pi0 cujo irmao ficou
 // mole demais para ser notado.
 TH1F   *hist_massa_gg        = 0;   // todos os pares, todos os energeticos
-TH1F   *hist_massa_melhor[NORIGENS];// o par mais proximo do pi0, so' isolados
+TH1F   *hist_massa_melhor    [NORIGENS];  // par mais proximo do pi0, isolados
+TH1F   *hist_massa_melhor_eta[NORIGENS];  // par mais proximo do eta, isolados
 
 // Espectro de pT DEPOIS da marcacao: os fotons marcados como filhos de pi0
 // sao jogados fora. E' a amostra que sobra para a analise de verdade.
-TH1F   *hist_pt_pos_pi0   = 0;
-TH1F   *hist_pt_pos_frag  = 0;
-TH1F   *hist_pt_pos_outro = 0;
+TH1F   *hist_pt_pos_pi0eta = 0;
+TH1F   *hist_pt_pos_frag   = 0;
+TH1F   *hist_pt_pos_outro  = 0;
 
 // Informacao da rodada: secao de choque, numero de eventos e peso.
 // TH1D (nao TH1F) porque sigma em mb precisa de precisao dupla.
@@ -129,6 +151,7 @@ TCanvas *c10 = 0;
 TCanvas *c11 = 0;
 TCanvas *c12 = 0;
 TCanvas *c13 = 0;   // massa invariante
+TCanvas *c14 = 0;   // E_iso por origem
 
 Bool_t eh_neutrino(Int_t pdg) // devolve true se o PDG for de neutrino
 {
@@ -188,6 +211,9 @@ Double_t soma_cone(TClonesArray *lista, Int_t i_foton,
 //
 // A conta e' feita somando os quadrivetores, que e' menos sujeita a erro
 // do que a formula do angulo.
+//
+// A mesma funcao serve para o eta: o que muda e' so' o valor de massa que a
+// gente procura (0,548 em vez de 0,135).
 Double_t massa_par(TParticle *a, TParticle *b)
 {
   Double_t E  = a->Energy() + b->Energy();
@@ -212,8 +238,8 @@ Int_t acha_faixa(Double_t pt, Double_t *lo, Double_t *hi)
 
 // Classifica a origem do foton pelo PDG da MAE DIRETA.
 // GetFirstMother() devolve um INDICE na lista, nao um PDG.
-//    0 = decaimento de pi0           (|PDG| == 111)
-//    1 = decaimento de outro hadron  (|PDG| > 100)
+//    0 = decaimento de pi0 OU de eta (|PDG| == 111 ou == 221)
+//    1 = decaimento de outro hadron  (|PDG| > 100, sem o pi0 e sem o eta)
 //    2 = fragmentacao                (|PDG| de 1 a 6: irradiado por um quark)
 //   -1 = nao classificado: sem mae valida, ou mae que nao e' nenhum dos tres
 //        (gluon, lepton, boson). Esses sao contados a parte, nao descartados
@@ -232,8 +258,9 @@ Int_t acha_faixa(Double_t pt, Double_t *lo, Double_t *hi)
 // Por isso aqui subimos enquanto a mae for ela mesma um foton, e so' entao
 // classificamos pelo PDG do primeiro ancestral que nao e' foton.
 //
-// A ordem dos testes importa: 111 e' maior que 100, entao o pi0 tem que ser
-// testado ANTES do caso geral de hadron.
+// A ordem dos testes importa: 111 e 221 sao maiores que 100, entao o pi0 e o
+// eta tem que ser testados ANTES do caso geral de hadron -- senao os dois
+// cairiam em "outro hadron".
 Int_t origem_foton(TClonesArray *lista, Int_t i_foton)
 {
   Int_t n = lista->GetEntriesFast();
@@ -256,9 +283,9 @@ Int_t origem_foton(TClonesArray *lista, Int_t i_foton)
 
   Int_t pdg = TMath::Abs(((TParticle*) lista->At(mae))->GetPdgCode());
 
-  if (pdg == 111)           return 0;   // pi0
-  if (pdg >= 1 && pdg <= 6) return 2;   // quark -> fragmentacao
-  if (pdg > 100)            return 1;   // outro hadron
+  if (pdg == 111 || pdg == 221) return 0;   // pi0 ou eta
+  if (pdg >= 1 && pdg <= 6)     return 2;   // quark -> fragmentacao
+  if (pdg > 100)                return 1;   // outro hadron (ja' sem o eta)
   return -1;                            // inclui o caso de estourar a trava
 }
 
@@ -301,14 +328,29 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   // 0,5 GeV/c e' a ordem de grandeza de um limiar de cluster tipico.
   Double_t pt_parceiro_min = 0.5;  // GeV/c: limiar para "ver" o parceiro
   Double_t janela_pi0      = 0.02; // GeV: meia-largura da janela do pi0
+  Double_t janela_eta      = 0.02; // GeV: meia-largura da janela do eta
+
+  // O foton e' MARCADO se existir um parceiro visivel cujo par caia em
+  // QUALQUER UMA das duas janelas -- a do pi0 ou a do eta. As duas janelas
+  // nao se encostam (0,115-0,155 e 0,528-0,568), entao nao ha' ambiguidade:
+  // um mesmo par nunca cai nas duas.
+
+  // ---- E_iso: binning do histograma da soma de pT no cone, por origem.
+  // 0 a 20 GeV/c em 100 bins = 0,2 GeV por bin. A largura foi escolhida para
+  // que o corte de isolamento (2,0 GeV/c) caia exatamente numa BORDA de bin:
+  // assim a integral abaixo do corte e' a eficiencia do isolamento, sem
+  // partir bin nenhum ao meio.
+  Double_t eiso_max   = 20.;
+  Int_t    eiso_nbins = 100;
 
   // seis faixas; a ultima vai ate 1000, ou seja, "acima de 20 GeV"
   Double_t faixa_lo[NFAIXAS] = { 5.,  8., 10., 12., 16.,   20.};
   Double_t faixa_hi[NFAIXAS] = { 8., 10., 12., 16., 20., 1000.};
 
   // nomes das tres origens, usados nos titulos e no resumo
-  const char *nome_origem[NORIGENS] = {"#pi^{0}", "outro hadron", "fragmentacao"};
-  const char *curto_origem[NORIGENS] = {"pi0", "outro", "frag"};
+  const char *nome_origem[NORIGENS] = {"#pi^{0} + #eta", "outro hadron",
+                                       "fragmentacao"};
+  const char *curto_origem[NORIGENS] = {"pi0eta", "outro", "frag"};
 
   // ---- buffers para montar textos com a familia printf
   char comando[200], nome_arquivo[200], png[200], rodada[60];
@@ -403,41 +445,62 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   // do hist_pt_direto_iso da foton_direto.cc, de proposito: assim o ruido
   // de cada origem e o sinal dos fotons diretos podem ser desenhados no
   // mesmo grafico, bin por bin, sem reamostrar nada.
-  hist_pt_iso_pi0   = new TH1F("hist_pt_iso_pi0",
-      "#gamma isolado de #pi^{0};p_{T}^{#gamma} [GeV/c];#gamma",
+  hist_pt_iso_pi0eta = new TH1F("hist_pt_iso_pi0eta",
+      "#gamma isolado de #pi^{0} + #eta;p_{T}^{#gamma} [GeV/c];#gamma",
       35, 5., 40.);
-  hist_pt_iso_frag  = new TH1F("hist_pt_iso_frag",
+  hist_pt_iso_frag   = new TH1F("hist_pt_iso_frag",
       "#gamma isolado de fragmentacao;p_{T}^{#gamma} [GeV/c];#gamma",
       35, 5., 40.);
-  hist_pt_iso_outro = new TH1F("hist_pt_iso_outro",
+  hist_pt_iso_outro  = new TH1F("hist_pt_iso_outro",
       "#gamma isolado de outro hadron;p_{T}^{#gamma} [GeV/c];#gamma",
       35, 5., 40.);
+
+  // ---- E_iso: soma de pT no cone, um histograma por origem.
+  // Preenchido para TODO foton energetico, isolado ou nao: e' a forma da
+  // distribuicao que interessa, e e' ela que explica por que o isolamento
+  // separa fragmentacao de decaimento.
+  for (Int_t o = 0; o < NORIGENS; o++)
+  {
+    sprintf(nome, "hist_eiso_%s", curto_origem[o]);
+    sprintf(titulo, "E_{iso} de %s;#Sigma pT^{cone} (R < %.1f) [GeV/c];#gamma",
+            nome_origem[o], R_iso);
+    hist_eiso[o] = new TH1F(nome, titulo, eiso_nbins, 0., eiso_max);
+  }
 
   // ---- massa invariante dos pares de fotons.
   // 500 bins de 0 a 1 GeV, 2 MeV por bin. A largura foi escolhida para que
   // a massa do pi0 (0,1349768) caia no CENTRO de um bin, [0,134 ; 0,136]:
   // com 5 MeV ela caia bem na borda e o pico aparecia deslocado para
   // 0,1325, o que confunde na hora de ler o grafico. O alcance ate' 1 GeV
-  // mostra tambem o eta em 0,548.
+  // mostra tambem o eta em 0,548, que agora e' alvo da marcacao junto com
+  // o pi0. A massa do eta (0,547862) tambem cai no centro de um bin.
   hist_massa_gg = new TH1F("hist_massa_gg",
       "massa invariante de pares de #gamma;m_{#gamma#gamma} [GeV/c^{2}];pares", 500, 0., 1.);
 
+  // Dois conjuntos: um com o par mais proximo da massa do PI0 e outro com o
+  // par mais proximo da massa do ETA. Sao coisas diferentes -- o parceiro que
+  // melhor imita um pi0 nao e' o mesmo que melhor imita um eta -- e e' por
+  // isso que cada janela precisa do seu proprio histograma.
   for (Int_t o = 0; o < NORIGENS; o++)
   {
     sprintf(nome, "hist_massa_melhor_%s", curto_origem[o]);
-    sprintf(titulo, "melhor par de %s (#gamma ISOLADO);m_{#gamma#gamma} [GeV/c^{2}];#gamma", nome_origem[o]);
+    sprintf(titulo, "melhor par (#pi^{0}) de %s, #gamma ISOLADO;m_{#gamma#gamma} [GeV/c^{2}];#gamma", nome_origem[o]);
     hist_massa_melhor[o] = new TH1F(nome, titulo, 500, 0., 1.);
+
+    sprintf(nome, "hist_massa_melhor_eta_%s", curto_origem[o]);
+    sprintf(titulo, "melhor par (#eta) de %s, #gamma ISOLADO;m_{#gamma#gamma} [GeV/c^{2}];#gamma", nome_origem[o]);
+    hist_massa_melhor_eta[o] = new TH1F(nome, titulo, 500, 0., 1.);
   }
 
   // ---- espectro de pT DEPOIS da marcacao, mesmo binning do de antes.
   // Par a par com os hist_pt_iso_*: um e' a amostra isolada, o outro e' a
   // mesma amostra com os marcados removidos. A razao entre os dois e' a
   // eficiencia do corte de massa em funcao do pT.
-  hist_pt_pos_pi0   = new TH1F("hist_pt_pos_pi0",
-      "#gamma de #pi^{0}, isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma", 35, 5., 40.);
-  hist_pt_pos_frag  = new TH1F("hist_pt_pos_frag",
+  hist_pt_pos_pi0eta = new TH1F("hist_pt_pos_pi0eta",
+      "#gamma de #pi^{0} + #eta, isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma", 35, 5., 40.);
+  hist_pt_pos_frag   = new TH1F("hist_pt_pos_frag",
       "#gamma de fragmentacao, isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma", 35, 5., 40.);
-  hist_pt_pos_outro = new TH1F("hist_pt_pos_outro",
+  hist_pt_pos_outro  = new TH1F("hist_pt_pos_outro",
       "#gamma de outro hadron, isolado e NAO marcado;p_{T}^{#gamma} [GeV/c];#gamma", 35, 5., 40.);
 
   // ---- histogramas fatiados por faixa.
@@ -506,9 +569,14 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
     for (Int_t f = 0; f < NFAIXAS; f++) { n_en[o][f] = 0; n_en_iso[o][f] = 0; }
   }
 
-  // marcacao por massa: isolados que tem um parceiro na janela do pi0
-  Long64_t n_marcado[NORIGENS] = {0, 0, 0};
-  Long64_t n_iso_tot[NORIGENS] = {0, 0, 0};   // isolados, para a fracao
+  // marcacao por massa: isolados que tem um parceiro em alguma das janelas.
+  // Separados por janela, para dar para ver qual das duas esta' marcando o
+  // que -- em especial quantos fotons de FRAGMENTACAO cada uma marca por
+  // engano, que e' a medida do preco da marcacao.
+  Long64_t n_marcado    [NORIGENS] = {0, 0, 0};   // pi0 OU eta
+  Long64_t n_marcado_pi0[NORIGENS] = {0, 0, 0};   // so' a janela do pi0
+  Long64_t n_marcado_eta[NORIGENS] = {0, 0, 0};   // so' a janela do eta
+  Long64_t n_iso_tot    [NORIGENS] = {0, 0, 0};   // isolados, para a fracao
 
   Long64_t n_sem_jato   = 0;   // foton energetico que nao caiu em jato nenhum
   Long64_t n_sem_origem = 0;   // nem pi0, nem hadron, nem quark na ancestralidade
@@ -711,6 +779,11 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
 
       hist_soma_cone->Fill(soma_pt_cone);
 
+      // ---- E_iso desta origem. Entra SEMPRE, isolado ou nao: o grafico
+      // mostra a distribuicao inteira, e o corte de isolamento aparece nele
+      // como uma linha vertical em 2 GeV/c.
+      hist_eiso[origem]->Fill(soma_pt_cone);
+
       // ---- espectro de pT do foton ISOLADO, por origem.
       // Preenchido AQUI: logo depois de decidir o isolamento e ANTES de
       // procurar o jato associado. Nao depende de jato nenhum, entao conta
@@ -718,21 +791,22 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
       // reconstruido (os que mais abaixo entram em n_sem_jato).
       if (isolado)
       {
-        if      (origem == 0) hist_pt_iso_pi0  ->Fill(pt_foton);
-        else if (origem == 1) hist_pt_iso_outro->Fill(pt_foton);
-        else if (origem == 2) hist_pt_iso_frag ->Fill(pt_foton);
+        if      (origem == 0) hist_pt_iso_pi0eta->Fill(pt_foton);
+        else if (origem == 1) hist_pt_iso_outro ->Fill(pt_foton);
+        else if (origem == 2) hist_pt_iso_frag  ->Fill(pt_foton);
       }
 
       // ---- MASSA INVARIANTE: procura o parceiro.
       // Para cada foton energetico, combina com TODO outro foton final do
       // evento que um calorimetro conseguiria ver (dentro da aceitacao e
       // acima do limiar) e calcula a massa do par. Se algum par cair na
-      // massa do pi0, este foton e' filho de pi0 e deveria ser descartado.
+      // massa do pi0 OU na do eta, este foton e' filho de um desses dois
+      // e deveria ser descartado.
       //
-      // Guarda o par MAIS PROXIMO da massa do pi0, que e' o que um
-      // algoritmo de marcacao de verdade usaria para decidir.
-      Double_t massa_melhor = -1;
-      Double_t dist_melhor  = 1e9;
+      // Guarda o par mais proximo de CADA uma das duas massas, que e' o que
+      // um algoritmo de marcacao de verdade usaria para decidir.
+      Double_t massa_pi0_melhor = -1,  dist_pi0_melhor = 1e9;
+      Double_t massa_eta_melhor = -1,  dist_eta_melhor = 1e9;
 
       for (Int_t jp = 0; jp < np; jp++)
       {
@@ -749,8 +823,13 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
 
         hist_massa_gg->Fill(m);
 
-        Double_t dist = TMath::Abs(m - M_PI0);
-        if (dist < dist_melhor) { dist_melhor = dist; massa_melhor = m; }
+        Double_t d_pi0 = TMath::Abs(m - M_PI0);
+        if (d_pi0 < dist_pi0_melhor)
+        { dist_pi0_melhor = d_pi0; massa_pi0_melhor = m; }
+
+        Double_t d_eta = TMath::Abs(m - M_ETA);
+        if (d_eta < dist_eta_melhor)
+        { dist_eta_melhor = d_eta; massa_eta_melhor = m; }
       }
 
       // So' os ISOLADOS entram na estatistica de marcacao: sao eles que
@@ -759,17 +838,25 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
       {
         n_iso_tot[origem]++;
 
-        // MARCADO: existe um parceiro visivel E o par cai na janela do pi0.
-        // Sem parceiro visivel o foton NAO e' marcado -- e e' justamente
-        // esse o caso irredutivel: o irmao ficou abaixo do limiar e nao ha'
-        // como saber que ele existiu.
-        Bool_t marcado = (massa_melhor >= 0 && dist_melhor < janela_pi0);
+        // MARCADO: existe um parceiro visivel E o par cai na janela do pi0
+        // ou na do eta. Sem parceiro visivel o foton NAO e' marcado -- e e'
+        // justamente esse o caso irredutivel: o irmao ficou abaixo do
+        // limiar e nao ha' como saber que ele existiu.
+        Bool_t marcado_pi0 = (massa_pi0_melhor >= 0 &&
+                              dist_pi0_melhor < janela_pi0);
+        Bool_t marcado_eta = (massa_eta_melhor >= 0 &&
+                              dist_eta_melhor < janela_eta);
+        Bool_t marcado     = (marcado_pi0 || marcado_eta);
 
-        if (massa_melhor >= 0)
-        {
-          hist_massa_melhor[origem]->Fill(massa_melhor);
-          if (marcado) n_marcado[origem]++;
-        }
+        if (massa_pi0_melhor >= 0) hist_massa_melhor    [origem]->Fill(massa_pi0_melhor);
+        if (massa_eta_melhor >= 0) hist_massa_melhor_eta[origem]->Fill(massa_eta_melhor);
+
+        // Os tres contadores: um por janela e um do total. O total NAO e' a
+        // soma dos dois, porque um mesmo foton pode ter um parceiro na
+        // janela do pi0 e outro, diferente, na janela do eta.
+        if (marcado_pi0) n_marcado_pi0[origem]++;
+        if (marcado_eta) n_marcado_eta[origem]++;
+        if (marcado)     n_marcado    [origem]++;
 
         // ---- AQUI o foton marcado e' de fato REMOVIDO.
         // Ate' esta versao o codigo so' CONTAVA os marcados; o espectro
@@ -778,9 +865,9 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
         // pureza pos-marcacao.
         if (!marcado)
         {
-          if      (origem == 0) hist_pt_pos_pi0  ->Fill(pt_foton);
-          else if (origem == 1) hist_pt_pos_outro->Fill(pt_foton);
-          else if (origem == 2) hist_pt_pos_frag ->Fill(pt_foton);
+          if      (origem == 0) hist_pt_pos_pi0eta->Fill(pt_foton);
+          else if (origem == 1) hist_pt_pos_outro ->Fill(pt_foton);
+          else if (origem == 2) hist_pt_pos_frag  ->Fill(pt_foton);
         }
       }
 
@@ -886,11 +973,11 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   sprintf(png, "v2_%s_lider_z_e_assimetria.png", rodada);  c6->SaveAs(png);
 
   // ---- c7, c8, c9: z dos ISOLADOS, uma origem por canvas
-  c7 = new TCanvas("c7", "z: isolado, de pi0", 1500, 1000);
+  c7 = new TCanvas("c7", "z: isolado, de pi0 + eta", 1500, 1000);
   c7->Divide(3, 2);
   for (Int_t f = 0; f < NFAIXAS; f++) { c7->cd(f + 1); hist_z_iso[0][f]->Draw(); }
   c7->Update();
-  sprintf(png, "v2_%s_z_iso_pi0.png", rodada);  c7->SaveAs(png);
+  sprintf(png, "v2_%s_z_iso_pi0eta.png", rodada);  c7->SaveAs(png);
 
   c8 = new TCanvas("c8", "z: isolado, de outro hadron", 1500, 1000);
   c8->Divide(3, 2);
@@ -905,11 +992,11 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   sprintf(png, "v2_%s_z_iso_frag.png", rodada);  c9->SaveAs(png);
 
   // ---- c10, c11, c12: z dos NAO ISOLADOS, para comparar
-  c10 = new TCanvas("c10", "z: nao isolado, de pi0", 1500, 1000);
+  c10 = new TCanvas("c10", "z: nao isolado, de pi0 + eta", 1500, 1000);
   c10->Divide(3, 2);
   for (Int_t f = 0; f < NFAIXAS; f++) { c10->cd(f + 1); hist_z_naoiso[0][f]->Draw(); }
   c10->Update();
-  sprintf(png, "v2_%s_z_naoiso_pi0.png", rodada);  c10->SaveAs(png);
+  sprintf(png, "v2_%s_z_naoiso_pi0eta.png", rodada);  c10->SaveAs(png);
 
   c11 = new TCanvas("c11", "z: nao isolado, de outro hadron", 1500, 1000);
   c11->Divide(3, 2);
@@ -925,12 +1012,13 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
 
   // ---- c13: MASSA INVARIANTE
   // Painel 1: todos os pares, alcance inteiro -- aparecem o pi0 e o eta.
-  // Painel 2: o mesmo com zoom no pi0.
-  // Painel 3: o melhor par de cada foton ISOLADO, separado por origem.
-  //           E' o painel que mostra se a marcacao funciona: os de pi0
-  //           tem que empilhar em 0,135 e os de fragmentacao nao.
-  c13 = new TCanvas("c13", "Massa invariante dos pares de fotons", 1500, 500);
-  c13->Divide(3, 1);
+  // Painel 2: zoom na janela do pi0.
+  // Painel 3: zoom na janela do eta, que agora tambem marca.
+  // Painel 4: o melhor par de cada foton ISOLADO, separado por origem.
+  //           E' o painel que mostra se a marcacao funciona: os de
+  //           pi0 + eta tem que empilhar em 0,135 e os de fragmentacao nao.
+  c13 = new TCanvas("c13", "Massa invariante dos pares de fotons", 1400, 1000);
+  c13->Divide(2, 2);
 
   c13->cd(1);
   gPad->SetLogy();
@@ -939,19 +1027,29 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   hist_massa_gg->SetLineWidth(2);
   hist_massa_gg->Draw("HIST E");
 
-  // O zoom e' uma COPIA: mexer no eixo do original mudaria o painel 1
+  // Os zooms sao COPIAS: mexer no eixo do original mudaria o painel 1
   // e o que vai para o .root.
   c13->cd(2);
   gPad->SetLeftMargin(0.16);
   TH1F *zoom = (TH1F*) hist_massa_gg->Clone("hist_massa_gg_zoom");
   zoom->SetDirectory(0);
-  zoom->SetTitle("zoom no #pi^{0}");
+  zoom->SetTitle("zoom na janela do #pi^{0}");
   zoom->GetXaxis()->SetRangeUser(0., 0.3);
   zoom->SetLineColor(kBlue);
   zoom->SetLineWidth(2);
   zoom->Draw("HIST E");
 
   c13->cd(3);
+  gPad->SetLeftMargin(0.16);
+  TH1F *zoom_eta = (TH1F*) hist_massa_gg->Clone("hist_massa_gg_zoom_eta");
+  zoom_eta->SetDirectory(0);
+  zoom_eta->SetTitle("zoom na janela do #eta");
+  zoom_eta->GetXaxis()->SetRangeUser(0.35, 0.75);
+  zoom_eta->SetLineColor(kGreen + 2);
+  zoom_eta->SetLineWidth(2);
+  zoom_eta->Draw("HIST E");
+
+  c13->cd(4);
   gPad->SetLogy();
   gPad->SetLeftMargin(0.16);
   {
@@ -971,7 +1069,7 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
       hist_massa_melhor[o]->SetLineColor(cor_m[o]);
       hist_massa_melhor[o]->SetLineWidth(2);
       hist_massa_melhor[o]->SetMaximum(topo_m * 2.);
-      hist_massa_melhor[o]->GetXaxis()->SetRangeUser(0., 0.5);
+      hist_massa_melhor[o]->GetXaxis()->SetRangeUser(0., 0.7);
       hist_massa_melhor[o]->Draw(o == 0 ? "HIST E" : "HIST E SAME");
 
       sprintf(titulo, "%s  (%.0f)", curto_origem[o],
@@ -982,6 +1080,72 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
   }
   c13->Update();
   sprintf(png, "v2_%s_massa_invariante.png", rodada);  c13->SaveAs(png);
+
+  // ---- c14: E_iso (soma de pT no cone) por origem.
+  // Cada curva e' dividida pela SUA PROPRIA area, entao o eixo nao e' mais
+  // contagem: e' (1/N_gama) dN/dE_iso, e a area debaixo de cada uma vale 1.
+  // Assim as tres formas podem ser comparadas mesmo tendo estatisticas
+  // muito diferentes -- o que interessa aqui e' a FORMA, nao o tamanho.
+  // A linha vertical e' o corte de isolamento: o que esta' a esquerda dela
+  // e' aceito, o que esta' a direita e' jogado fora.
+  c14 = new TCanvas("c14", "E_iso por origem", 900, 700);
+  gPad->SetLogy();
+  gPad->SetLeftMargin(0.16);
+  {
+    Int_t cor_e[NORIGENS] = {kBlue, kGreen + 2, kRed};
+    TH1F *norm_e[NORIGENS];
+
+    Double_t topo_e = 0, piso_e = 1e30;
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      sprintf(nome, "hist_eiso_%s_norm", curto_origem[o]);
+      norm_e[o] = (TH1F*) hist_eiso[o]->Clone(nome);
+      norm_e[o]->SetDirectory(0);     // copia de grafico: nao vai para o .root
+
+      // Scale(c, "width") divide cada bin pela largura dele e multiplica por
+      // c. Com c = 1/integral, a area debaixo da curva passa a valer 1.
+      Double_t area = norm_e[o]->Integral();
+      if (area > 0) norm_e[o]->Scale(1. / area, "width");
+
+      if (norm_e[o]->GetMaximum() > topo_e) topo_e = norm_e[o]->GetMaximum();
+
+      for (Int_t b = 1; b <= norm_e[o]->GetNbinsX(); b++)
+      {
+        Double_t v = norm_e[o]->GetBinContent(b);
+        if (v > 0 && v < piso_e) piso_e = v;
+      }
+    }
+    if (piso_e > 1e29) piso_e = 1e-6;
+
+    TLegend *leg_e = new TLegend(0.50, 0.70, 0.89, 0.89);
+    leg_e->SetTextSize(0.035);
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      norm_e[o]->SetTitle("isolamento por origem, normalizado por #gamma");
+      norm_e[o]->SetYTitle("(1/N_{#gamma}) dN/dE_{iso}  [c/GeV]");
+      norm_e[o]->SetStats(0);
+      norm_e[o]->SetLineColor(cor_e[o]);
+      norm_e[o]->SetLineWidth(2);
+      norm_e[o]->SetMinimum(piso_e * 0.5);
+      norm_e[o]->SetMaximum(topo_e * 3.);
+      norm_e[o]->Draw(o == 0 ? "HIST E" : "HIST E SAME");
+      leg_e->AddEntry(norm_e[o], nome_origem[o], "l");
+    }
+
+    TLine *linha_corte = new TLine(pt_iso_max, piso_e * 0.5,
+                                   pt_iso_max, topo_e * 3.);
+    linha_corte->SetLineColor(kBlack);
+    linha_corte->SetLineStyle(2);
+    linha_corte->SetLineWidth(2);
+    linha_corte->Draw();
+
+    leg_e->AddEntry(linha_corte, "corte de isolamento", "l");
+    leg_e->Draw();
+  }
+  c14->Update();
+  sprintf(png, "v2_%s_eiso.png", rodada);  c14->SaveAs(png);
 
   // ================================================================
   //  RESUMO -- vem ANTES do Write(), porque le os histogramas
@@ -1064,7 +1228,7 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
 
   // ---- (c) contaminacao: quanto da amostra vem de decaimento
   printf("--------------------------------------------------\n");
-  printf("  (c) CONTAMINACAO = (pi0 + outro hadron) / total\n");
+  printf("  (c) CONTAMINACAO = (pi0 + eta + outro hadron) / total\n");
   printf("      Compara a amostra sem corte com a amostra isolada.\n");
   printf("  %-11s %14s %14s %12s\n",
          "faixa [GeV]", "sem isolamento", "com isolamento", "reducao");
@@ -1098,18 +1262,25 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
 
   // ---- (e) MARCACAO POR MASSA INVARIANTE
   printf("--------------------------------------------------\n");
-  printf("  (e) MARCACAO POR MASSA INVARIANTE (#pi^{0}-tagging)\n");
-  printf("      Um #gamma ISOLADO e' marcado se existir outro #gamma no\n");
+  printf("  (e) MARCACAO POR MASSA INVARIANTE (pi0 e eta)\n");
+  printf("      Um gama ISOLADO e' marcado se existir outro gama no\n");
   printf("      evento, com pT > %.2f GeV/c e |eta| < %.1f, tal que o par\n",
          pt_parceiro_min, eta_part_max);
-  printf("      tenha massa a menos de %.0f MeV da massa do pi0.\n",
-         janela_pi0 * 1000.);
-  printf("  %-14s %9s %9s %10s\n", "origem", "isolados", "marcados", "marcados %");
+  printf("      caia em UMA DAS DUAS janelas de massa:\n");
+  printf("        pi0 : %.4f +- %.0f MeV\n", M_PI0, janela_pi0 * 1000.);
+  printf("        eta : %.4f +- %.0f MeV\n", M_ETA, janela_eta * 1000.);
+  printf("      A coluna frag e' o PRECO da marcacao: foton de fragmentacao\n");
+  printf("      nao vem de decaimento nenhum, entao tudo que e' marcado la'\n");
+  printf("      foi marcado por engano.\n");
+  printf("  %-8s %9s %9s %9s %9s %9s\n", "origem", "isolados",
+         "m. pi0", "m. eta", "m. total", "total %");
 
   for (Int_t o = 0; o < NORIGENS; o++)
-    printf("  %-14s %9lld %9lld %9.2f%%\n", curto_origem[o],
-           n_iso_tot[o], n_marcado[o],
+    printf("  %-8s %9lld %9lld %9lld %9lld %8.2f%%\n", curto_origem[o],
+           n_iso_tot[o], n_marcado_pi0[o], n_marcado_eta[o], n_marcado[o],
            n_iso_tot[o] ? 100. * n_marcado[o] / n_iso_tot[o] : 0.);
+  printf("      (m. total nao e' a soma das duas janelas: um mesmo foton\n");
+  printf("       pode ter um parceiro em cada janela.)\n");
 
   // O que sobra depois de jogar fora os marcados. E' a conta que interessa:
   // a marcacao so' vale a pena se tirar mais fundo do que sinal.
@@ -1137,9 +1308,32 @@ void jatos_foton_v2(Double_t pt_hat_min = 4.,
     printf("       produz decaimento e fragmentacao.)\n");
   }
 
-  // ---- (f) fotons que nao cairam em jato nenhum
+  // ---- (f) E_ISO: quanto cada origem se concentra abaixo do corte.
+  // A fracao abaixo do corte e' a EFICIENCIA do isolamento para aquela
+  // origem. Como o corte de 2 GeV/c cai numa borda de bin, a integral de
+  // 1 ate' o bin do corte conta exatamente o que e' aceito.
   printf("--------------------------------------------------\n");
-  printf("  (f) fotons energeticos sem jato : %lld\n", n_sem_jato);
+  printf("  (f) E_iso = soma de pT no cone (R < %.1f), por origem\n", R_iso);
+  printf("  %-8s %10s %12s %12s %10s\n", "origem", "energet.",
+         "<E_iso>", "abaixo corte", "eficiencia");
+  {
+    Int_t b_corte = hist_eiso[0]->FindBin(pt_iso_max) - 1;  // ultimo aceito
+
+    for (Int_t o = 0; o < NORIGENS; o++)
+    {
+      Int_t nbe = hist_eiso[o]->GetNbinsX();
+      Double_t tudo  = hist_eiso[o]->Integral(0, nbe + 1);
+      Double_t aceito = hist_eiso[o]->Integral(1, b_corte);
+
+      printf("  %-8s %10.0f %12.3f %12.0f %9.2f%%\n", curto_origem[o],
+             tudo, hist_eiso[o]->GetMean(), aceito,
+             tudo ? 100. * aceito / tudo : 0.);
+    }
+  }
+
+  // ---- (g) fotons que nao cairam em jato nenhum
+  printf("--------------------------------------------------\n");
+  printf("  (g) fotons energeticos sem jato : %lld\n", n_sem_jato);
   printf("      origem nao classificada     : %lld\n", n_sem_origem);
   printf("==================================================\n");
 

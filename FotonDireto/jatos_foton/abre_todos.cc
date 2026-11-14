@@ -50,7 +50,7 @@
 
 const Int_t NRODADAS = 4;
 const Int_t NFAIXAS  = 6;
-const Int_t NORIGENS = 3;   // 0 = pi0, 1 = outro hadron, 2 = fragmentacao
+const Int_t NORIGENS = 3;   // 0 = pi0 + eta, 1 = outro hadron, 2 = fragmentacao
 
 TFile *tod_arquivo[NRODADAS];
 
@@ -200,8 +200,8 @@ void abre_todos(Bool_t normalizar = kTRUE, Bool_t exclusivas = kTRUE)
     tod_rotulo[0] = "pThat > 4 GeV";  tod_rotulo[1] = "pThat > 7 GeV";
     tod_rotulo[2] = "pThat > 10 GeV"; tod_rotulo[3] = "pThat > 15 GeV";
   }
-  const char *curto[NORIGENS]  = {"pi0", "outro", "frag"};
-  const char *nome_origem[NORIGENS] = {"#pi^{0}", "outro hadron", "fragmentacao"};
+  const char *curto[NORIGENS]  = {"pi0eta", "outro", "frag"};
+  const char *nome_origem[NORIGENS] = {"#pi^{0} + #eta", "outro hadron", "fragmentacao"};
 
   char nome[200], titulo[300];
 
@@ -370,8 +370,8 @@ void abre_todos(Bool_t normalizar = kTRUE, Bool_t exclusivas = kTRUE)
   printf("---------------------------------------------\n");
   printf("  42 histogramas sobrepostos em 9 canvases:\n");
   printf("    tod_c1 espectros   tod_c2 pi0   tod_c3 sigmas\n");
-  printf("    tod_c4/c5/c6  z ISOLADO     de pi0 / outro / frag\n");
-  printf("    tod_c7/c8/c9  z NAO isolado de pi0 / outro / frag\n");
+  printf("    tod_c4/c5/c6  z ISOLADO     de pi0+eta / outro / frag\n");
+  printf("    tod_c7/c8/c9  z NAO isolado de pi0+eta / outro / frag\n");
   printf("  Os de 2 dimensoes nao da' para sobrepor; use lado a lado:\n");
   printf("    tod_mapa(\"hist_eta_phi\")\n");
   printf("    tod_mapa(\"hist_td_0\")    tod_mapa(\"hist_AZ_2\")\n");

@@ -2,7 +2,7 @@
 # Roda o SINAL (foton_direto.cc) nas MESMAS 4 faixas exclusivas de pThat
 # usadas no ruido, para que a pureza possa ser calculada.
 #
-#   ./producao_direto.sh            100 mil eventos por faixa
+#   ./producao_direto.sh            100 mil eventos por faixa (o padrao)
 #   ./producao_direto.sh 5000       teste rapido
 #
 # As sementes sao as mesmas do ruido (43, 44, 45, 46). Nao ha' problema:
