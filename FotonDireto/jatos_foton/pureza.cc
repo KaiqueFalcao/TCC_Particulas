@@ -202,7 +202,17 @@ TH1F *faz_normalizado(TH1F *h, const char *nome)
   TH1F *nm = (TH1F*) h->Clone(nome);
   nm->SetDirectory(0);               // copia de grafico: fora do .root
 
-  Double_t area = nm->Integral();    // soma dos bins visiveis
+  // Integral(0, nbins+1) e' de proposito: inclui underflow e OVERFLOW.
+  // A area tem que ser o numero TOTAL de fotons, nao so' os que couberam
+  // no eixo. No E_iso, que vai de 0 a 20 GeV/c, 20% dos fotons de pi0+eta
+  // e 16% dos de outro hadron tem E_iso maior que 20 e caem no overflow.
+  // Com Integral() puro essas duas curvas subiam ~25% e ~18%, e o erro
+  // NAO se cancela entre as curvas: o sinal e a fragmentacao quase nao tem
+  // overflow, entao o grafico levantava so' o fundo.
+  // O desenho continua de 0 a 20; o que muda e' que a area visivel agora
+  // e' a FRACAO de fotons ali dentro, nao 1.
+  Int_t nbx = nm->GetNbinsX();
+  Double_t area = nm->Integral(0, nbx + 1);
   if (area > 0) nm->Scale(1. / area, "width");
 
   nm->SetStats(0);

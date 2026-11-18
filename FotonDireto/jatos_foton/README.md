@@ -295,6 +295,33 @@ fração isolada, agora com a distribuição inteira visível por trás deles.
 A versão só com o ruído, por faixa de pThat, sai em `v2_<rodada>_eiso.png`; a
 somada, em `soma_eiso.png`.
 
+**Normalização: a área conta todos os fótons, não só os do eixo.** O
+`faz_normalizado()` divide cada curva pela sua área usando
+`Integral(0, nbins+1)`, que inclui o **overflow**. Não é detalhe: o eixo vai
+até 20 GeV/c, e acima disso ficam **20,4 %** dos fótons de π⁰ + η e 15,6 % dos
+de outro hádron, contra 0,9 % da fragmentação e 0,0 % do sinal.
+
+Com `Integral()` puro, as duas curvas de decaimento subiam 25,6 % e 18,4 % e as
+outras duas não se mexiam — ou seja, o erro **não se cancelava entre as
+curvas**: ele levantava justamente o fundo, no gráfico cuja função é mostrar
+que o fundo é pior. Com a correção, a área à esquerda da linha reproduz exatamente
+as eficiências da tabela de fração isolada:
+
+| curva | área < 2 GeV/c | área total visível |
+|---|---|---|
+| sinal | 89,15 % | 100,00 % |
+| π⁰ + η | 10,99 % | 79,61 % |
+| outro hádron | 11,00 % | 84,43 % |
+| fragmentação | 73,08 % | 99,11 % |
+
+A área visível deixa de ser 1 e passa a ser a **fração de fótons com
+E_iso < 20 GeV/c**, que é a leitura certa. A alternativa seria esticar o eixo
+até 60 GeV/c, mas aí o gráfico perderia a região que interessa, perto do corte.
+
+Isso vale para todas as curvas normalizadas, não só o E_iso — `faz_normalizado()`
+é a mesma função usada nos espectros de pT. E não toca a pureza: ela é calculada
+em seção de choque, nunca nas curvas normalizadas.
+
 ---
 
 ## Três escalas do mesmo espectro
